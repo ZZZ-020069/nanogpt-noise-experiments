@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nanogpt-noise-experiments"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["torch>=2.6,<3", "numpy>=1.26,<3"]
+
+[project.optional-dependencies]
+plots = ["matplotlib>=3.8,<4"]
+prepare = ["datasets>=3,<4", "tiktoken>=0.9,<1", "huggingface-hub>=0.30,<1"]
+
+[tool.setuptools.packages.find]
+include = ["nanogpt_noise*"]

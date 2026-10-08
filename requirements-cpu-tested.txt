@@ -1,0 +1,4 @@
+# Versions used for local CPU verification (Python 3.13.5 on Windows).
+# Install the appropriate CUDA build separately on the H100 host.
+torch==2.9.1
+numpy==2.1.3
