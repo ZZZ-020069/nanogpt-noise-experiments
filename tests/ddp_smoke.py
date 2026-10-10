@@ -29,9 +29,14 @@ def worker(root):
             run(cfg,root/'data',root/'artifacts',root/f'{name}_resume',micro=1,runtime=rt,test=True)
             whole=torch.load(root/f'{name}_whole'/'final.pt',weights_only=True)
             resumed=torch.load(root/f'{name}_resume'/'final.pt',weights_only=True)
+            for parameter, value in whole['model'].items():
+                restored=resumed['model'][parameter]
+                assert torch.equal(value,restored), (
+                    name,parameter,'max_abs_error',float((value-restored).abs().max()))
             assert tensor_hash(whole['model'].items())==tensor_hash(resumed['model'].items())
             status=read_json(root/f'{name}_whole'/'status.json')
             assert status['tokens']==256 and status['status']=='completed'
+            if rt.rank==0: print(f'{rt.world}-rank {name}: bitwise resume passed',flush=True)
     # A nonfinite loss on only one rank must terminate all ranks without hanging.
     original_forward=GPT.forward
     def broken(model,x,y):

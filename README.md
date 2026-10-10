@@ -168,3 +168,5 @@ python -m nanogpt_noise.analyze --runs "$RUN_DIR" --output "$RUN_DIR/analysis" -
 ## 实现边界
 
 当前支持单机多卡 DDP，不支持跨节点启动、FSDP 或分片优化器。为了保证噪声配对，各 rank 使用相同独立 RNG 和去重参数顺序；评估 checkpoint 时检查副本权重哈希相同。范数采用高精度 reduction 避免平方和溢出；这可能带来额外开销，应测量吞吐但不能私自省略协议诊断。运行不依赖 WandB 等在线日志服务。
+
+DDP 使用固定初始梯度桶布局（`find_unused_parameters=True, static_graph=False`），避免中断恢复后重新经历桶重排而改变浮点归约顺序。PyTorch 可能提示没有发现 unused parameters，这是该设置的预期开销提示；代码仍禁止可训练参数缺失梯度。不要为消除这条提示擅自更改 DDP 参数。具体测试记录见 `docs/VALIDATION.md`，CPU 逐位一致性测试不能代替 H100 的恢复验收。

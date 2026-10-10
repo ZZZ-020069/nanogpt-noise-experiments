@@ -24,6 +24,7 @@ These checks are implementation tests, not research results.
 
 - The initial implementation commit `3c30469` passed Linux CPU unit tests and the original two-rank AdamW/Muon Gloo resume smoke in [Actions run 37866003505](https://github.com/ZZZ-020069/nanogpt-noise-experiments/actions/runs/37866003505).
 - This change extends CI to two and four ranks, all four optimizers, full/last1 scopes, accumulation, noisy gradients, resume and a single-rank NaN failure. Its matching remote run must be checked after upload; the initial commit's green status is not evidence for the new test version.
+- The first expanded run (`944097f`, Actions 38032523765) passed the 26 unit tests and two-rank checks, but failed the four-rank bitwise resume assertion. The default DDP reducer rebuilds gradient buckets after its first backward, so a newly constructed resumed reducer can change floating-point reduction order. The fix keeps the initial bucket layout using `find_unused_parameters=True, static_graph=False`; missing trainable gradients are still rejected. The rebuild condition is documented in [PyTorch's reducer source](https://github.com/pytorch/pytorch/blob/v2.9.1/torch/csrc/distributed/c10d/reducer.hpp#L130-L135). The unchanged exact-equality regression is being rerun; it has not been replaced by a loose tolerance.
 
 ## Not yet validated
 

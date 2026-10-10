@@ -170,8 +170,14 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after):
         model.load_state_dict(state['model'])
         bundle.load_state_dict(state['optimizer'])
         step,processed,best,evaluations = state['step'],state['tokens'],state['best'],state['evaluations']
+    # Keep bucket layout fixed across construction/resume. Default DDP rebuilds
+    # buckets after its first backward; a fresh resumed reducer would otherwise
+    # use a different reduction order than an uninterrupted warmed-up reducer.
+    # In PyTorch 2.x find_unused_parameters=True with static_graph=False disables
+    # this rebuild. Missing trainable gradients remain an explicit error below.
     wrapped = DDP(model,device_ids=[rt.local_rank] if rt.device.type=='cuda' else None,
-                  broadcast_buffers=False) if rt.world>1 else model
+                  broadcast_buffers=False,find_unused_parameters=True,
+                  static_graph=False) if rt.world>1 else model
     if rt.rank==0 and mode!='test':
         print(f"[{mode}] {config['scope']}/{config['optimizer']} node={config['node']} "
               f"peak_lr={config['peak_lr']:.8g} world={rt.world} micro={micro} "
