@@ -12,14 +12,17 @@ from nanogpt_noise.node import run_node
 from nanogpt_noise.analyze import auc,collect
 
 
-def fixture(root):
+def fixture(root, batch_size=4):
     data=root/'data'
     data.mkdir()
     for split,size in (('train',1024),('val',256)):
         (np.arange(size)%64).astype('<u2').tofile(data/f'{split}.bin')
     write_json(data/'meta.json',dict(kind='synthetic_test_fixture'))
     artifacts=root/'artifacts'
-    freeze(data,artifacts,tiny=True)
+    from nanogpt_noise.protocol import Budget
+    with patch('nanogpt_noise.data.Budget',
+               side_effect=lambda **kw: Budget(**{**kw, 'batch': batch_size})):
+        freeze(data,artifacts,tiny=True)
     return data,artifacts
 
 

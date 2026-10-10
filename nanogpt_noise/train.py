@@ -172,6 +172,10 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after):
         step,processed,best,evaluations = state['step'],state['tokens'],state['best'],state['evaluations']
     wrapped = DDP(model,device_ids=[rt.local_rank] if rt.device.type=='cuda' else None,
                   broadcast_buffers=False) if rt.world>1 else model
+    if rt.rank==0 and mode!='test':
+        print(f"[{mode}] {config['scope']}/{config['optimizer']} node={config['node']} "
+              f"peak_lr={config['peak_lr']:.8g} world={rt.world} micro={micro} "
+              f"accumulation={accumulation} step={step}/{target} output={output}", flush=True)
     interrupted = [False]
     old_handlers = {}
     for sig in (signal.SIGTERM,signal.SIGINT):
@@ -209,6 +213,9 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after):
         best = min(best,values['val'])
         if rt.rank==0:
             write_json(output/'evaluations.json',evaluations)
+            if mode!='test':
+                print(f"eval step={step}/{target} train={values['train']:.6f} "
+                      f"val={values['val']:.6f}", flush=True)
             if improved:
                 save_checkpoint(output/'best.pt',snapshot())
             save_checkpoint(latest,snapshot())
@@ -264,6 +271,10 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after):
                            finite=True,elapsed_seconds=time.monotonic()-started)
             if rt.rank==0:
                 write_json(output/'steps'/f'{step:06d}.json',metrics)
+                if diagnostic and mode!='test':
+                    print(f"step={step}/{target} tokens={processed} "
+                          f"loss={float(train_loss):.6f} lr={lr:.8g} "
+                          f"elapsed={time.monotonic()-started:.1f}s", flush=True)
             if budget.evaluate_at(step) or step==target:
                 checkpoint_evaluation()
             stop = rt.any(interrupted[0] or (pause_after is not None and step>=pause_after))
@@ -314,6 +325,9 @@ def main():
         dist.destroy_process_group()
     if result['status']=='infrastructure_failure':
         raise SystemExit(75)
+    if a.smoke_steps is not None and result['status']!='completed':
+        # A failed smoke must not look like successful hardware acceptance.
+        raise SystemExit(2)
 
 
 if __name__=='__main__':

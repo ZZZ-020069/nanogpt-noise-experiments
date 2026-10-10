@@ -4,6 +4,38 @@
 
 **状态：CPU 协议/集成测试通过；H100 BF16、Linux NCCL 多卡、实际吞吐和显存尚未验证。没有正式实验结果。不要未经验收直接提交整个任务数组。**
 
+## 四张 H100：直接启动
+
+入口是 **`scripts/run_4gpu.sh`**，四张卡共同运行一个候选（DDP），不是每卡运行一个不同候选。先按下文安装 CUDA 版 PyTorch、传好数据和冻结产物，并在服务器申请到单机四张 GPU。脚本不会申请算力、下载数据或重新生成初始化。
+
+```bash
+git pull --ff-only
+# 激活已安装本项目依赖的 Python 环境
+export DATA_DIR=/实际路径/openwebtext_subset/data
+export ARTIFACT_DIR=/实际路径/protocol-v1.4
+export RUN_DIR=/实际路径/results/nanogpt-v1.4
+
+# 先验收：完整模型、正式全局 batch，Muon 非零噪声，运行8步
+bash scripts/run_4gpu.sh smoke
+
+# 验收通过后：正式运行 job 0 的八个完整预算 LR 候选
+bash scripts/run_4gpu.sh node 0
+```
+
+脚本要求恰好四张可见 GPU，逐卡检查 BF16、检查 NCCL 和数据/权重哈希；默认每卡 micro-batch=4、累积32次，全局 batch=512 不变。若服务器可见卡数超过四张，可在**已获分配的卡内**设置 `CUDA_VISIBLE_DEVICES=0,1,2,3`（编号按实际分配）；Slurm 已设置该变量时应保留调度器设置。`PYTHON` 可指定环境内 Python 的绝对路径。
+
+`smoke [scope optimizer node]` 可选择验收配置，例如：
+
+```bash
+bash scripts/run_4gpu.sh smoke full adamw 0
+bash scripts/run_4gpu.sh smoke last1 adam 10
+bash scripts/run_4gpu.sh smoke last12 sgd 10
+```
+
+这些输出都放在 `$RUN_DIR/smoke/4gpu/`，不进入正式结果。任意验收报错或数值失败都要先检查，不能据此继续批量启动。短程成功也不保证所有正式 LR 都稳定；正式搜索中的数值失败按协议记录并继续下一候选。恢复时执行原命令，保持代码、环境、四卡布局和 micro-batch 不变。
+
+`node N` 每次仅启动一个节点；不会自动跑完整 840 个节点。需要顺序运行多个节点时，在验收和预算确认后显式指定，例如 `for job in $(seq 0 34); do bash scripts/run_4gpu.sh node "$job" || break; done` 只运行 full/AdamW 的35节点，不是四种优化器的全部节点。建议在服务器的 tmux 会话或学校调度任务内运行，避免 SSH 断开打断训练。Slurm 使用下文模板时，另以 `--gres=gpu:4` 申请四卡并设置 `GPUS_PER_JOB=4`，不要只申请一卡却启动四进程。
+
 ## 设计来源和目录
 
 工作区的唯一编辑源为 `VSCode下载/New/nanogpt_experiment_design.md`。本仓库 `docs/nanogpt_experiment_design.md` 是随代码发布的同版文本快照，不是独立维护的设计；修订应先改主文档，再同步快照。本文仅描述操作与实现。
@@ -78,9 +110,11 @@ Linux CPU 分布式机制检查（小模型、合成数据，不是正式结果�
 
 ```bash
 torchrun --standalone --nproc-per-node=2 -m tests.ddp_smoke --output /tmp/nanogpt-ddp-test
+# 四进程检查请使用另一空输出目录
+torchrun --standalone --nproc-per-node=4 -m tests.ddp_smoke --output /tmp/nanogpt-ddp-test-4
 ```
 
-该测试验证 AdamW/Muon 双进程训练和中断恢复；本机 Windows 的 Gloo 后端不支持建立连接，因此尚未在本机通过。CI 配有 Linux 测试，但其实际通过状态需查看 GitHub Actions。这不替代 H100/NCCL 验证。
+该测试验证四种优化器、full/last1、梯度累积、非零噪声、中断恢复及单 rank 数值失败的全局处理；本机 Windows 的 Gloo 后端不支持建立连接，因此尚未在本机通过。CI 配有 Linux 两进程/四进程测试，但其实际通过状态需查看 GitHub Actions。这不替代 H100/NCCL 验证。
 
 H100 验收还应检查 BF16、显存峰值、每步耗时、评估/写盘耗时，并用 SIGTERM 后重启确认同候选恢复。首步 LR=0 是设计要求，不是训练故障。
 
