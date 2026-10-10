@@ -23,8 +23,8 @@ These checks are implementation tests, not research results.
 ## Remote CI evidence
 
 - The initial implementation commit `3c30469` passed Linux CPU unit tests and the original two-rank AdamW/Muon Gloo resume smoke in [Actions run 37866003505](https://github.com/ZZZ-020069/nanogpt-noise-experiments/actions/runs/37866003505).
-- This change extends CI to two and four ranks, all four optimizers, full/last1 scopes, accumulation, noisy gradients, resume and a single-rank NaN failure. Its matching remote run must be checked after upload; the initial commit's green status is not evidence for the new test version.
-- The first expanded run (`944097f`, Actions 38032523765) passed the 26 unit tests and two-rank checks, but failed the four-rank bitwise resume assertion. The default DDP reducer rebuilds gradient buckets after its first backward, so a newly constructed resumed reducer can change floating-point reduction order. The fix keeps the initial bucket layout using `find_unused_parameters=True, static_graph=False`; missing trainable gradients are still rejected. The rebuild condition is documented in [PyTorch's reducer source](https://github.com/pytorch/pytorch/blob/v2.9.1/torch/csrc/distributed/c10d/reducer.hpp#L130-L135). The unchanged exact-equality regression is being rerun; it has not been replaced by a loose tolerance.
+- Commit `b65d8af` passed all 26 unit tests, Bash syntax validation, and both two-rank and four-rank Linux Gloo checks in [Actions run 38032717104](https://github.com/ZZZ-020069/nanogpt-noise-experiments/actions/runs/38032717104). Distributed coverage includes all four optimizers, full/last1 scopes, gradient accumulation, noisy gradients, bitwise checkpoint resume and a single-rank NaN failure propagated to all ranks.
+- The first expanded run (`944097f`, Actions 38032523765) passed the 26 unit tests and two-rank checks, but failed the four-rank bitwise resume assertion. The default DDP reducer rebuilds gradient buckets after its first backward, so a newly constructed resumed reducer can change floating-point reduction order. The fix keeps the initial bucket layout using `find_unused_parameters=True, static_graph=False`; missing trainable gradients are still rejected. The rebuild condition is documented in [PyTorch's reducer source](https://github.com/pytorch/pytorch/blob/v2.9.1/torch/csrc/distributed/c10d/reducer.hpp#L130-L135). The same exact-equality regression passed after the fix; it was not replaced by a loose tolerance. This is evidence for the tested CPU configuration, not a guarantee of bitwise CUDA reproducibility across hardware or software versions.
 
 ## Not yet validated
 
@@ -32,6 +32,5 @@ These checks are implementation tests, not research results.
 - Linux NCCL multi-GPU execution and target-server signal/restart behavior.
 - Local Windows Gloo: torchrun lacks libuv support; direct FileStore fallback reaches an unsupported Gloo device error. The Linux CI evidence above is separate from local execution.
 - Online data re-preparation and exact reproduction across tokenizer/datasets versions. Existing corpus metadata does not preserve its original preparation dependency versions.
-- The expanded Linux two/four-rank CI checks are pending the new commit's remote run.
 
 No full-budget training, formal result, quadratic experiment or automatic Slurm submission was performed. Formal-launch readiness requires the target-hardware checks above.

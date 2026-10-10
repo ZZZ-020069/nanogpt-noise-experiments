@@ -2,7 +2,7 @@
 
 实现设计 v1.4：完整 124M NanoGPT，full 和 last-{1,2,3,6,12}，四种优化器、35 个噪声节点、每节点八个完整预算 LR 候选。二次函数不在本次代码范围内。
 
-**状态：CPU 协议/集成测试通过；H100 BF16、Linux NCCL 多卡、实际吞吐和显存尚未验证。没有正式实验结果。不要未经验收直接提交整个任务数组。**
+**状态：26项单元测试及 Linux 两进程/四进程 Gloo 训练、断点恢复测试通过；H100 BF16、Linux NCCL 多卡、实际吞吐和显存尚未验证。没有正式实验结果。不要未经验收直接提交整个任务数组。**
 
 ## 四张 H100：直接启动
 
@@ -114,7 +114,7 @@ torchrun --standalone --nproc-per-node=2 -m tests.ddp_smoke --output /tmp/nanogp
 torchrun --standalone --nproc-per-node=4 -m tests.ddp_smoke --output /tmp/nanogpt-ddp-test-4
 ```
 
-该测试验证四种优化器、full/last1、梯度累积、非零噪声、中断恢复及单 rank 数值失败的全局处理；本机 Windows 的 Gloo 后端不支持建立连接，因此尚未在本机通过。CI 配有 Linux 两进程/四进程测试，但其实际通过状态需查看 GitHub Actions。这不替代 H100/NCCL 验证。
+该测试验证四种优化器、full/last1、梯度累积、非零噪声、中断恢复及单 rank 数值失败的全局处理；本机 Windows 的 Gloo 后端不支持建立连接，但代码提交 `b65d8af` 已通过 [Linux 两进程/四进程 CI](https://github.com/ZZZ-020069/nanogpt-noise-experiments/actions/runs/38032717104)。这不替代 H100/NCCL 验证。
 
 H100 验收还应检查 BF16、显存峰值、每步耗时、评估/写盘耗时，并用 SIGTERM 后重启确认同候选恢复。首步 LR=0 是设计要求，不是训练故障。
 
