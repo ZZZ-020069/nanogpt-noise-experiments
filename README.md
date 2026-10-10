@@ -1,30 +1,178 @@
-# NanoGPT gradient-noise experiments
+# NanoGPT 噪声实验：四卡运行指南
 
-实现设计 v1.4：完整 124M NanoGPT，full 和 last-{1,2,3,6,12}，四种优化器、35 个噪声节点、每节点八个完整预算 LR 候选。二次函数不在本次代码范围内。
+本文面向接手运行实验的人，按 **Linux 服务器、单机 4 张 H100** 说明操作。四张卡通过 DDP 共同训练一个候选，不是每张卡分别运行一个实验。当前仅实现 NanoGPT，二次函数不在本仓库的运行范围内。
 
-**状态：26项单元测试及 Linux 两进程/四进程 Gloo 训练、断点恢复测试通过；H100 BF16、Linux NCCL 多卡、实际吞吐和显存尚未验证。没有正式实验结果。不要未经验收直接提交整个任务数组。**
+**第一次运行请依次完成第 1–5 步，验收通过后再进入第 6 步。** 所有命令均在服务器的 Bash 中执行，不是在本地 Windows PowerShell 中执行。
 
-## 四张 H100：直接启动
+只有 `sbatch`、没有交互式 GPU 会话时：先做第1步、第2.1节、第3步及第4步的文件校验/CPU测试，再按[Slurm 附录](#slurm)提交验收。第2.2节和第4步的 GPU 检查由四卡脚本在计算节点内自动完成，不要求登录节点能看到 GPU。
 
-入口是 **`scripts/run_4gpu.sh`**，四张卡共同运行一个候选（DDP），不是每卡运行一个不同候选。先按下文安装 CUDA 版 PyTorch、传好数据和冻结产物，并在服务器申请到单机四张 GPU。脚本不会申请算力、下载数据或重新生成初始化。
+> 验证状态：26项单元测试及 Linux 两进程/四进程 CPU 分布式测试已通过，见[验证记录](docs/VALIDATION.md)。H100 的 BF16、NCCL 通信、显存、速度及恢复仍需实机验收；CPU 测试通过不代表已完成 GPU 验收。当前没有正式实验结果。
+
+## 操作目录
+
+1. [获取代码](#step-1)
+2. [准备 Python 和 GPU 环境](#step-2)
+3. [放置数据、初始权重并设置路径](#step-3)
+4. [检查文件和四卡配置](#step-4)
+5. [运行短程验收](#step-5)
+6. [选择任务并开始正式训练](#step-6)
+7. [查看进度、停止与恢复](#step-7)
+8. [汇总结果并交回文件](#step-8)
+
+附录：[Slurm 提交](#slurm) · [常见问题](#faq) · [维护者说明](#maintainers)
+
+<a id="step-1"></a>
+## 第 1 步：获取代码
+
+首次下载：
 
 ```bash
-git pull --ff-only
-# 激活已安装本项目依赖的 Python 环境
-export DATA_DIR=/实际路径/openwebtext_subset/data
-export ARTIFACT_DIR=/实际路径/protocol-v1.4
-export RUN_DIR=/实际路径/results/nanogpt-v1.4
-
-# 先验收：完整模型、正式全局 batch，Muon 非零噪声，运行8步
-bash scripts/run_4gpu.sh smoke
-
-# 验收通过后：正式运行 job 0 的八个完整预算 LR 候选
-bash scripts/run_4gpu.sh node 0
+git clone https://github.com/ZZZ-020069/nanogpt-noise-experiments.git
+cd nanogpt-noise-experiments
 ```
 
-脚本要求恰好四张可见 GPU，逐卡检查 BF16、检查 NCCL 和数据/权重哈希；默认每卡 micro-batch=4、累积32次，全局 batch=512 不变。若服务器可见卡数超过四张，可在**已获分配的卡内**设置 `CUDA_VISIBLE_DEVICES=0,1,2,3`（编号按实际分配）；Slurm 已设置该变量时应保留调度器设置。`PYTHON` 可指定环境内 Python 的绝对路径。
+如果已经下载过，只在**开始新一轮实验前、没有训练进程运行时**更新：
 
-`smoke [scope optimizer node]` 可选择验收配置，例如：
+```bash
+cd /实际的仓库路径/nanogpt-noise-experiments
+git pull --ff-only
+```
+
+仓库若为私有，需要先接受协作者邀请，并使用有权限的 GitHub 账号认证。不要向其他人发送密码或访问令牌。
+
+**检查点：** 当前目录下应有 `README.md`、`nanogpt_noise/` 和 `scripts/run_4gpu.sh`。后文命令默认都在这个仓库根目录执行。开始正式训练后固定代码版本，不要一边训练一边 `git pull`。
+
+<a id="step-2"></a>
+## 第 2 步：准备 Python 和 GPU 环境
+
+### 2.1 激活环境并安装项目依赖
+
+优先使用服务器已有的、包含 **Python ≥3.11 和 CUDA 版 PyTorch 2.6–2.x** 的环境。若使用 Conda，将下面的环境名换成实际名称；环境已经激活则跳过第一行。
+
+```bash
+conda activate 实际环境名
+python --version
+python -m pip install -e '.[plots]'
+```
+
+没有合适环境时，可先创建独立环境，按服务器驱动选择 [PyTorch 官方安装命令](https://pytorch.org/get-started/locally/)，安装符合上述版本范围的 CUDA wheel，再安装本项目。**不要把 `requirements-cpu-tested.txt` 当成 H100 安装配置。** 接手运行不需要重新下载或分词数据，因此此处不安装 `prepare` 依赖。
+
+### 2.2 确认拿到了四张 GPU
+
+先通过学校调度系统申请单机四卡，或使用已经分配给你的四卡服务器。不要在仅供登录的节点启动训练。需要 `sbatch` 的服务器参见[Slurm 附录](#slurm)。
+
+在获得 GPU 的环境中检查：
+
+```bash
+nvidia-smi
+python -c "import torch; print('torch:', torch.__version__); print('CUDA:', torch.version.cuda); print('available:', torch.cuda.is_available()); print('GPU count:', torch.cuda.device_count()); print('NCCL:', torch.distributed.is_nccl_available())"
+```
+
+**检查点：** `available: True`、`GPU count: 4`、`NCCL: True`，且 CUDA 版本不是 `None`。
+
+如果获准使用的服务器有更多可见 GPU，可以选择其中已分配的四张，例如 `export CUDA_VISIBLE_DEVICES=0,1,2,3`。编号按实际分配填写；**Slurm 已设置此变量时，保留调度器设置。** 脚本只使用可见 GPU，不会替你申请资源。
+
+<a id="step-3"></a>
+## 第 3 步：放置数据、初始权重并设置路径
+
+### 3.1 从项目提供者处接收两组文件
+
+`git clone` **只下载代码，不包含以下大文件**。从项目提供者分享的网盘等渠道下载、解压到服务器，保留文件内容和名称：
+
+```text
+数据目录/                      ← DATA_DIR 指向这里
+├── train.bin                  # 2,000,000,000 字节
+├── val.bin                    #    20,000,000 字节
+└── meta.json
+
+公共产物目录/                  ← ARTIFACT_DIR 指向这里
+├── initial.pt                 # 统一的未训练初始权重
+├── windows.pt                 # 固定训练/评估窗口索引
+└── identity.json              # 文件哈希与身份信息
+
+结果目录/                      ← RUN_DIR 指向这里，由程序写入
+```
+
+公共产物不是训练后的模型。所有实验共用同一套文件；如果只收到了 `train.bin` 和 `val.bin`，仍然缺文件，需补齐后继续。
+
+### 3.2 设置三个目录
+
+**下面三行都需要换成服务器上的真实绝对路径。** 指向包含文件的目录，不是压缩包，也不是单个 `.bin` 或 `.pt` 文件。
+
+```bash
+export DATA_DIR="/实际路径/openwebtext_subset/data"
+export ARTIFACT_DIR="/实际路径/protocol-v1.4"
+export RUN_DIR="/实际路径/results/nanogpt-v1.4"
+
+mkdir -p "$RUN_DIR"
+ls -lh "$DATA_DIR/train.bin" "$DATA_DIR/val.bin" "$DATA_DIR/meta.json"
+ls -lh "$ARTIFACT_DIR/initial.pt" "$ARTIFACT_DIR/windows.pt" "$ARTIFACT_DIR/identity.json"
+df -h "$RUN_DIR"
+```
+
+**检查点：** 六个输入文件都存在，结果目录可写、空间充足。full Adam/AdamW 每个候选的 latest/best/final 合计约4.5 GB，八个候选约36 GB，还需预留临时写入和日志空间；不能只按一个模型估算整个网格的存储量。
+
+新开终端或调度任务时，需要重新激活同一 Python 环境并设置这三个变量。恢复训练必须指向原结果目录。
+
+<a id="step-4"></a>
+## 第 4 步：检查文件和四卡配置
+
+先核对文件哈希；这个命令不训练，也不重新生成权重：
+
+```bash
+python -m nanogpt_noise.data \
+  --data "$DATA_DIR" --artifacts "$ARTIFACT_DIR" --verify
+```
+
+**检查点：** 无报错并输出产物 ID。本项目已提供产物的 ID 为：
+
+```text
+9cabd9c54c6d717354f8f6750715f9280c5502f0a85a9032806b9c7956cbd76e
+```
+
+随后在四卡环境中执行启动检查：
+
+```bash
+python -m nanogpt_noise.preflight \
+  --data "$DATA_DIR" --artifacts "$ARTIFACT_DIR" --micro-batch 4
+```
+
+**检查点：** 输出四张 GPU 的名称，以及 `world: 4`、`micro: 4`、`accumulation: 32`、`global_batch: 512`。程序还会逐卡检查 BF16 和验证文件身份。报错时先按[常见问题](#faq)排查，不继续训练。
+
+再运行实现测试：
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+应看到 `Ran 26 tests` 和 `OK`。这一步使用小模型/合成数据，不占用正式训练预算，也不能替代下一步的四卡验收。
+
+<a id="step-5"></a>
+## 第 5 步：先运行短程验收，不启动正式网格
+
+### 5.1 运行第一个四卡 smoke test
+
+`smoke` 是短程连通性和实现检查：使用完整124M模型、正式全局 batch 和学习率调度，但只跑8步，不参与正式结果。
+
+首次运行这条 smoke 时，安排一次恢复验收：看到至少完成第1步、尚未到第8步时，按第7.2节停止并重启原命令，然后让它跑完。不要等所有 smoke 完成后再尝试中断；Slurm 后台作业的停止方法见附录 A。
+
+```bash
+bash scripts/run_4gpu.sh smoke
+```
+
+默认配置为 `full / Muon / 噪声节点10`，峰值 LR 使用基准值。程序先重复启动检查，然后输出 `step=.../8` 和验证 loss。第一次还会读取权重、进行 step=0 评估和写 checkpoint，可能不会立即出现训练步日志。
+
+结束后查看状态：
+
+```bash
+python -m json.tool "$RUN_DIR/smoke/4gpu/full-muon-node10/status.json"
+```
+
+**成功标志：** `status` 为 `completed`、`mode` 为 `smoke`、`step` 为 `8`，且命令没有异常退出。`numerical_failure` 或 `infrastructure_failure` 都不算验收通过。首步 `lr=0` 是预热设计，不是故障。
+
+### 5.2 补查其他优化器和训练范围
+
+第一个 smoke 通过后，再逐条运行下列配置；每条都应检查对应目录的 `status.json`：
 
 ```bash
 bash scripts/run_4gpu.sh smoke full adamw 0
@@ -32,141 +180,226 @@ bash scripts/run_4gpu.sh smoke last1 adam 10
 bash scripts/run_4gpu.sh smoke last12 sgd 10
 ```
 
-这些输出都放在 `$RUN_DIR/smoke/4gpu/`，不进入正式结果。任意验收报错或数值失败都要先检查，不能据此继续批量启动。短程成功也不保证所有正式 LR 都稳定；正式搜索中的数值失败按协议记录并继续下一候选。恢复时执行原命令，保持代码、环境、四卡布局和 micro-batch 不变。
+这组检查覆盖四种优化器、full/last1/last12、clean 和非零噪声。结果位于 `$RUN_DIR/smoke/4gpu/` 下的 `full-adamw-node0/`、`last1-adam-node10/`、`last12-sgd-node10/`。
 
-`node N` 每次仅启动一个节点；不会自动跑完整 840 个节点。需要顺序运行多个节点时，在验收和预算确认后显式指定，例如 `for job in $(seq 0 34); do bash scripts/run_4gpu.sh node "$job" || break; done` 只运行 full/AdamW 的35节点，不是四种优化器的全部节点。建议在服务器的 tmux 会话或学校调度任务内运行，避免 SSH 断开打断训练。Slurm 使用下文模板时，另以 `--gres=gpu:4` 申请四卡并设置 `GPUS_PER_JOB=4`，不要只申请一卡却启动四进程。
+首次上机还需观察显存、每步耗时和写盘耗时，确认第一个 smoke 的恢复检查已完成。**重复运行已完成的同一条 smoke 会直接返回已有结果，不会重测 GPU。** 如错过中断时机或需重测，使用新的结果根目录保存验收输出，不要删除正式 checkpoint；测完后再将 RUN_DIR 设回本轮正式结果目录。
 
-## 设计来源和目录
-
-工作区的唯一编辑源为 `VSCode下载/New/nanogpt_experiment_design.md`。本仓库 `docs/nanogpt_experiment_design.md` 是随代码发布的同版文本快照，不是独立维护的设计；修订应先改主文档，再同步快照。本文仅描述操作与实现。
-
-- `nanogpt_noise/protocol.py`, `search.py`：冻结参数、token 调度和 LR 搜索。
-- `model.py`, `optim.py`, `noise.py`：模型、参数范围、优化器和同步后的噪声注入。
-- `data.py`, `prepare.py`：数据检查、固定权重/窗口，及可选的数据重新制备。
-- `train.py`, `node.py`：独立候选、恢复、节点级八次候选搜索。
-- `jobs.py`, `analyze.py`：完整任务清单与结果汇总/二维图。
-- `tests/`：CPU 单元、端到端、断点恢复与多进程检查。
-- `scripts/`：直接启动与 Slurm 模板。
-
-模型结构参考 nanoGPT，原 MIT 声明见 `third_party/nanogpt-LICENSE`；不因此为整个研究项目额外授予统一开源许可。
-
-## 1. 安装（Linux / H100）
-
-使用 Python 3.11 或以上的独立环境。先按服务器驱动安装学校认可的 CUDA 版 PyTorch（代码范围为 2.6–2.x，CPU 实测为 2.9.1），不能把 CPU wheel 安装命令直接当作 H100 环境配置。驱动/CUDA wheel 的组合需要在目标机器核验，当前不假定某个具体 CUDA 版本。
+验收通过后，保存本轮软件环境和代码版本：
 
 ```bash
-git clone https://github.com/ZZZ-020069/nanogpt-noise-experiments.git
-cd nanogpt-noise-experiments
-python -m venv .venv
-source .venv/bin/activate
-# 在此环境安装与服务器驱动匹配的 CUDA PyTorch，然后：
-pip install -e '.[plots]'
-python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.get_device_name(), torch.cuda.is_bf16_supported())"
-python -m unittest discover -s tests -v
+python -m pip freeze > "$RUN_DIR/environment-lock.txt"
+git rev-parse HEAD > "$RUN_DIR/code-commit.txt"
 ```
 
-首次验收后将 `pip freeze` 保存到实验输出目录的 `environment-lock.txt`，正式批量运行锁定同一环境。已有合适的学校 Conda 环境也可以直接使用，不必套建 venv。CI 的 CPU 安装与 H100 安装分开。
+这两份文件用于记录，不会自动阻止环境变化；正式运行及恢复时仍须保持环境一致。不要在另一套环境中覆盖已有记录。
 
-## 2. 固定数据和公共产物
+<a id="step-6"></a>
+## 第 6 步：选择任务并开始正式训练
 
-优先将现有 `train.bin`（2,000,000,000 字节）、`val.bin`（20,000,000 字节）、`meta.json` 传到服务器同一个数据目录。不要提交到 Git。现有数据的 tokenizer/制备依赖版本若未留存，必须标为未知，不能用当前版本冒充；制备 revision 与文件哈希由程序保存。
+### 6.1 先理解任务编号
 
-以下 `/path/to/...` 都是需由运行者替换的目录：
+一个 `job` = **一种可训练范围（scope）× 一种优化器 × 一个噪声节点**。一个 job 内顺序测试八个学习率；每个正常候选完整运行4960步、约2.6B tokens。它不是8步 smoke，也不是一次命令完成所有噪声节点。
+
+生成完整任务表只写文件，不启动训练：
 
 ```bash
-export DATA_DIR=/path/to/openwebtext_subset/data
-export ARTIFACT_DIR=/path/to/shared/nanogpt-v1.4-artifacts
-export RUN_DIR=/path/to/results/nanogpt-v1.4
-python -m nanogpt_noise.data --data "$DATA_DIR" --artifacts "$ARTIFACT_DIR"
-python -m nanogpt_noise.data --data "$DATA_DIR" --artifacts "$ARTIFACT_DIR" --verify
 python -m nanogpt_noise.jobs --output "$RUN_DIR/jobs.json"
 ```
 
-冻结动作只做一次，生成 `initial.pt`、`windows.pt`、`identity.json`。每个候选启动时重验文件哈希；各 rank 读取同一份公共产物。初始化和全部训练/评估窗口在 CPU 固定，正式运行不重新抽样。输出文件不会覆盖已有不匹配产物。一次未完成的制备应换新目录重做。
+| scope | job 编号范围 | 可训练参数 |
+|---|---:|---|
+| `full` | 0–139 | 全部参数 |
+| `last1` | 140–279 | 最后1个 block |
+| `last2` | 280–419 | 最后2个 block |
+| `last3` | 420–559 | 最后3个 block |
+| `last6` | 560–699 | 最后6个 block |
+| `last12` | 700–839 | 全部12个 block，仍冻结 block 外参数 |
 
-本地已制备一套 `artifacts/protocol-v1.4/`（被 Git 忽略），对应身份登记在主设计 §12.1。若使用这套公共产物，请将整个目录连同三份数据文件另行传输，服务器仅运行 `--verify`；不要各自重新生成不同的初始化/窗口再混用。数据依赖版本未知项保持如实记录。
+每个 scope 内依次是 AdamW、Adam、SGD-Momentum、Muon，各占35个编号。例如 full 的 AdamW 是0–34，Adam 是35–69，SGD 是70–104，Muon 是105–139。`smoke ... 10` 中的10是该优化器内的噪声节点号；`node 10` 中的10则是整个任务表的 job 编号，二者不要混淆。
 
-如果确实需要重新制备数据，可在独立空目录运行：
+### 6.2 先查看，再启动一个 job
+
+以 **job 0：full / AdamW / clean 节点** 为例。先查看配置：
 
 ```bash
-pip install -e '.[prepare]'
-python -m nanogpt_noise.prepare --output /path/to/new-corpus
-```
-
-重新制备需要网络和数据访问权限；固定源 revision、验证优先、GPT-2 编码和边界文档丢弃规则。不同依赖版本仍可能得到不同产物，因此不能只凭同 seed 宣称与已有语料一致；比较哈希，所有 run 必须选择同一套最终产物。本次未在线重制备 1B 语料。
-
-## 3. 先做 H100 smoke 验收
-
-```bash
-torchrun --standalone --nproc-per-node=1 -m nanogpt_noise.train \
+python -m nanogpt_noise.node --job-index 0 \
   --data "$DATA_DIR" --artifacts "$ARTIFACT_DIR" \
-  --output "$RUN_DIR/smoke/full-muon-noisy" \
-  --scope full --optimizer muon --node 10 --exponent 0 --smoke-steps 8
+  --output "$RUN_DIR" --dry-run
 ```
 
-smoke 使用完整模型、完整全局 batch、正式 scheduler，只在指定步数结束；始终标记 `mode=smoke`，不能进入正式搜索或替代正式预算。至少检查四种优化器、full 与 last1/last12、clean 与非零噪声；多卡时用实际卡数重复检查。默认每卡 micro-batch=4，卡数×micro-batch 必须整除 512。布局可以在新实验启动前配置，但同一候选恢复时拒绝改变布局。
-
-Linux CPU 分布式机制检查（小模型、合成数据，不是正式结果）：
+确认输出包含 `scope: full`、`optimizer: adamw`、`node: 0`、`sigma1: 0.0`、`sigma2: 0.0` 后启动：
 
 ```bash
-torchrun --standalone --nproc-per-node=2 -m tests.ddp_smoke --output /tmp/nanogpt-ddp-test
-# 四进程检查请使用另一空输出目录
-torchrun --standalone --nproc-per-node=4 -m tests.ddp_smoke --output /tmp/nanogpt-ddp-test-4
+bash scripts/run_4gpu.sh node 0
 ```
 
-该测试验证四种优化器、full/last1、梯度累积、非零噪声、中断恢复及单 rank 数值失败的全局处理；本机 Windows 的 Gloo 后端不支持建立连接，但代码提交 `b65d8af` 已通过 [Linux 两进程/四进程 CI](https://github.com/ZZZ-020069/nanogpt-noise-experiments/actions/runs/38032717104)。这不替代 H100/NCCL 验证。
+程序自动搜索八个学习率，不需要手动填 LR。四卡默认每卡 micro-batch=4、累积32次，每步全局512条序列；不要为加速改掉正式预算、噪声定义或启用梯度裁剪。
 
-H100 验收还应检查 BF16、显存峰值、每步耗时、评估/写盘耗时，并用 SIGTERM 后重启确认同候选恢复。首步 LR=0 是设计要求，不是训练故障。
+输出放在 `$RUN_DIR/job_0000/`。更换任务时按任务表修改末尾编号；如运行 job 105，则执行 `bash scripts/run_4gpu.sh node 105`。
 
-## 4. 正式运行与 Slurm
+**长时间训练不要依赖裸 SSH 会话。** 已分配的独立服务器可使用 tmux：先执行 `tmux new -s nanogpt`，在新会话中进入仓库、激活环境、设置三个路径，再运行命令；按 `Ctrl+B` 后按 `D` 脱离，训练继续，之后用 `tmux attach -t nanogpt` 返回。学校集群按[Slurm 附录](#slurm)提交。
 
-每个 job 是一个 scope / optimizer / 噪声节点，内部顺序执行五个初始 LR 和三个自适应 LR。每条候选完整 4960 步；只有数值非有限提前结束。不使用梯度裁剪，也不因为有限的大 loss 提前淘汰。
+### 6.3 确认预算后再批量运行
+
+先确认单个 job 的运行、恢复和存储正常，再与项目负责人确认范围。下面**仅运行 full / AdamW 的35个节点**，顺序执行，遇到进程报错立即停止：
 
 ```bash
-# 先查看配置，不启动训练
-python -m nanogpt_noise.node --job-index 0 --data "$DATA_DIR" \
-  --artifacts "$ARTIFACT_DIR" --output "$RUN_DIR" --dry-run
-# 单机单卡跑一个节点的八次搜索
-bash scripts/run.sh 0
-# 或单机四卡分摊同一个候选
-GPUS_PER_JOB=4 MICRO_BATCH=4 bash scripts/run.sh 0
+for job in $(seq 0 34); do
+  bash scripts/run_4gpu.sh node "$job" || break
+done
 ```
 
-job 0–139 为 full；后续每 140 个依次为 last1、last2、last3、last6、last12。每个 scope 内 optimizer 顺序为 AdamW、Adam、SGD、Muon；每个优化器包含 σ1-major 的 35 节点。以 `jobs.json` 为准确映射。
+full 四种优化器共140个 job；全部六个 scope 共840个 job、6720条候选，最大基础预算约17.475T tokens。不要把范围随意改成0–839后直接提交。四卡脚本一次占用四张卡，不要在同一组卡上同时启动多个四卡命令。
 
-Slurm 模板不虚构账户/分区名称：由运行者通过 `sbatch --partition=实际分区 --account=实际账户 scripts/slurm.sh` 指定。如学校无 account 要求则省略该参数。模板默认申请 1 GPU、8 CPU、32 GB 主机内存、24 小时；应按学校限制调整资源参数，不能改变实验参数。多卡需同时调整申请的 GPU 数和 `GPUS_PER_JOB`。
+<a id="step-7"></a>
+## 第 7 步：查看进度、停止与恢复
 
-验收并确认总预算后才可手动添加例如 `--array=0-139%4`（full 的140个节点、最多4个并发）。完整范围为0–839，总计6720条候选、约17.475T tokens；脚本不自动提交这个规模。不同节点可以并行，一个节点内部的追加 LR 依赖已完成候选。
+### 7.1 在哪里看结果
 
-## 5. 恢复、故障和文件
+以 job 0 为例：
 
-原命令重跑即恢复，无需另传 checkpoint。完成的候选不会重复训练；数值失败是终态，基础设施中断继续原候选。SIGTERM/SIGINT 在完整更新结束后保存 latest；硬杀/断电从最近一次原子 checkpoint 恢复。Slurm 超时可能来不及保存最后一步，此时会重算此前未提交部分，不改变正式预算。
+```text
+RUN_DIR/
+├── smoke/4gpu/...             # 短程验收，与正式结果分开
+├── jobs.json                  # 任务编号表
+└── job_0000/
+    ├── search.json            # 已结束候选及当前 winner；首个候选结束后才有
+    ├── candidate_00/          # 第1个学习率候选
+    │   ├── metadata.json      # 配置、环境、文件身份和参数范围
+    │   ├── steps/000001.json  # 每个成功更新步骤的日志
+    │   ├── evaluations.json   # 训练/验证评估曲线
+    │   ├── status.json        # 完成或中断/失败状态，不是实时心跳
+    │   ├── latest.pt          # 恢复用 checkpoint
+    │   ├── best.pt            # 最低验证 loss 的诊断 checkpoint
+    │   └── final.pt           # 完整预算结束后生成
+    └── candidate_01/ ... candidate_07/
+```
 
-每条候选输出：
-
-- `metadata.json`：协议、实现哈希、配置、数据/初始化身份、环境、布局、参数清单、Muon 分组。
-- `steps/000001.json` 等：逐步日志；首步/末步及每10步详细诊断。
-- `evaluations.json`：固定窗口曲线；恢复时以 checkpoint 中的曲线为准。
-- `latest.pt`、`best.pt`、`final.pt`：可恢复状态、诊断最佳状态、完整预算状态。
-- `status.json`：处理的 tokens、成功更新步数、模式、完成或故障状态。
-- `failure.pt`：数值失败现场，不覆盖 last-known-good latest。
-
-原子写入加 `.lock` 防止重复进程写同一目录。硬杀后若遗留 `.lock`，必须先确认该目录没有活跃 worker，再仅删除该锁文件；不要删除 checkpoint，也不要盲目解锁。禁止两个 Slurm job 使用同一个 job-index 和输出目录。
-
-恢复拒绝更换配置、数据、代码、依赖版本和并行布局。请冻结正式 commit 后再运行；更新代码后不要硬改 metadata 绕过检查。若存储/权限错误发生在进入训练循环前，进程会报错退出，同样不能当作 numerical_failure。
-
-Checkpoint 占用很大：full Adam/AdamW 每份约1.5 GB，latest/best/final 三份约4.5 GB（不含临时写入及其他输出）。应按各 scope/优化器测量总存储需求并预留原子写入空间。本代码不会擅自删候选 checkpoint 来省空间。
-
-## 6. 汇总
+终端在首步、每10步和末步输出训练进度，并输出评估信息。也可查看已生成的 JSON：
 
 ```bash
-python -m nanogpt_noise.analyze --runs "$RUN_DIR" --output "$RUN_DIR/analysis" --plots
+ls "$RUN_DIR/job_0000/candidate_00/steps/" | tail
+python -m json.tool "$RUN_DIR/job_0000/candidate_00/evaluations.json"
+python -m json.tool "$RUN_DIR/job_0000/search.json"
 ```
 
-生成 CSV/JSON 和 σ1×σ2 热图：终点 loss、相对各自调优 clean 的 Δloss、最佳 LR、优化器名次和数值失败数。缺失/全失败保留空白；只有八次搜索完成才给出正式节点 winner，未完成跨优化器比较标为不完整。只使用 `mode=formal`，不把小模型测试或 smoke 混入结果。单 seed 的排名不代表统计显著性。
+尚未生成的文件会报不存在，不必据此判断训练失败。某个候选结束后，到下一个 `candidate_XX` 目录查看。
 
-## 实现边界
+**整个 job 完成的标志：** `search.json` 中 `complete: true`，并有8个候选记录。`winner` 按完整预算末尾验证 loss 选择，不使用 `best.pt` 的最低历史 loss；八个候选均数值失败时，搜索仍算结束，但 `winner` 为空。
 
-当前支持单机多卡 DDP，不支持跨节点启动、FSDP 或分片优化器。为了保证噪声配对，各 rank 使用相同独立 RNG 和去重参数顺序；评估 checkpoint 时检查副本权重哈希相同。范数采用高精度 reduction 避免平方和溢出；这可能带来额外开销，应测量吞吐但不能私自省略协议诊断。运行不依赖 WandB 等在线日志服务。
+### 7.2 停止后如何继续
 
-DDP 使用固定初始梯度桶布局（`find_unused_parameters=True, static_graph=False`），避免中断恢复后重新经历桶重排而改变浮点归约顺序。PyTorch 可能提示没有发现 unused parameters，这是该设置的预期开销提示；代码仍禁止可训练参数缺失梯度。不要为消除这条提示擅自更改 DDP 参数。具体测试记录见 `docs/VALIDATION.md`，CPU 逐位一致性测试不能代替 H100 的恢复验收。
+需要主动停止时，在运行终端按一次 `Ctrl+C`，等待进程退出。程序尝试在完整更新结束后保存 `latest.pt`；外部强杀、断电或调度器不给足退出时间时，只能恢复到此前已经落盘的 checkpoint。
+
+恢复不需要指定 `.pt` 文件，重新激活原环境、设置原路径，并执行**原命令**：
+
+```bash
+bash scripts/run_4gpu.sh node 0
+```
+
+已完成或数值失败的候选不会重跑，未完成候选从自己的 `latest.pt` 继续；此前没有成功写入 checkpoint 的候选会从统一初始化重新开始。不要改 job 编号来“恢复”，不要换 RUN_DIR，也不要复制其他候选的 checkpoint。
+
+| 状态/问题 | 应如何处理 |
+|---|---|
+| `completed` | 候选完成；节点控制器继续下一个 LR |
+| `numerical_failure` | 出现 NaN/Inf；保留 `failure.pt` 和记录，正式搜索继续其他候选，不算基础设施故障 |
+| `infrastructure_failure`、OOM、存储错误、抢占 | 排查环境，恢复原候选；不换 LR 顶替、不擅自修改 batch 或噪声 |
+| `.lock` 已存在 | 先确认没有活跃进程写该目录；确认是硬杀遗留锁后才手动移除那个锁文件，不删 checkpoint |
+| `refusing incompatible resume` | 代码、数据、配置、PyTorch/CUDA 或布局与记录不符；恢复原环境，不改 metadata 绕过检查 |
+
+四卡实机恢复验收也使用此流程，但应在**尚未完成的 smoke** 上操作，并重跑相同 smoke 命令。检查停止后有 `latest.pt`，且 `status.json` 中的 step 为1–7；重启时的 `[smoke] ... step=N/8` 应接续该步骤，而不是从0开始。如果只保住了 step=0 的初始 checkpoint，这次不能证明训练中途恢复成功，需要重新安排验收。继续到8步只能说明恢复流程跑通；若要证明 GPU 权重与不中断训练逐位一致，还需额外对照，不能仅凭 `completed` 宣称一致。
+
+<a id="step-8"></a>
+## 第 8 步：汇总结果并交回文件
+
+训练后，在同一环境和仓库目录执行：
+
+```bash
+python -m nanogpt_noise.analyze \
+  --runs "$RUN_DIR" --output "$RUN_DIR/analysis" --plots
+```
+
+生成 `analysis/surfaces.csv`、`analysis/surfaces.json` 和各 scope 的热图。只汇总正式结果，smoke 不参与；未完成或没有有效 winner 的位置保留空白，不补成零。只有八个候选结束后才给正式节点结果，跨优化器结果未齐时不能据不完整排名下结论。
+
+交回时保留 `search.json`、各候选的 metadata/日志/状态、分析文件和环境/commit 记录。Checkpoint 体积较大，先与项目负责人商定存放或传输方式，**不要自行删除，也不要上传 GitHub**。
+
+<a id="slurm"></a>
+## 附录 A：服务器使用 Slurm 时
+
+本节是直接执行四卡命令的替代方式，不是另一套实验。先完成代码、环境和数据准备。提交前激活 Python 环境，设置三个**绝对路径**，并进入仓库根目录。
+
+在学校允许的准备节点运行第4步的文件 `--verify` 和 CPU 单元测试即可；不用在无 GPU 的登录节点运行 `preflight`。下面的批作业会在分配到四卡后自动执行 preflight，检查 GPU 数量、BF16、NCCL、布局和文件哈希。检查通过才会开始 smoke。
+
+分区名和账户名必须替换；学校不要求 account 时删除该选项。GPU 资源写法、CPU/内存和时限按学校规定调整；示例不保证已获分配。
+
+```bash
+export PYTHON="$(command -v python)"
+sbatch --job-name=nanogpt-smoke \
+  --partition=实际分区 --account=实际账户 \
+  --nodes=1 --ntasks=1 --gres=gpu:4 \
+  --cpus-per-task=16 --mem=64G --time=02:00:00 \
+  --export=ALL scripts/run_4gpu.sh smoke
+```
+
+`sbatch` 返回的是**调度器作业号**，不是实验的0–839编号。提交成功不等于验收通过；用 `squeue -u "$USER"` 看排队情况，检查 `slurm-调度器作业号.out` 和第5步的 smoke 状态文件。
+
+**后台作业的恢复验收：** 在第一个 smoke 的日志已出现 `step=1/8`、仍未结束时，仅对这一个验收作业发送 TERM（替换为 `sbatch` 返回的实际作业号）：
+
+```bash
+scancel --signal=TERM --full 实际调度器作业号
+```
+
+`--full` 会把信号发送到批作业及子进程，参见 [Slurm 官方说明](https://slurm.schedmd.com/scancel.html)。等待旧进程退出，按第7.2节检查 checkpoint 和停止状态，再重新提交同一条 `sbatch ... smoke` 命令。新调度器作业号可以不同，但环境、RUN_DIR 和 smoke 参数必须相同。保存是否来得及仍取决于实机退出时限；未检查 checkpoint 前，不要声称已成功恢复。
+
+首个 smoke 完成后，分别把提交命令末尾的 `smoke` 换成第5.2节的 `smoke full adamw 0`、`smoke last1 adam 10`、`smoke last12 sgd 10`，逐个提交和检查。全部通过后再做第5步的环境记录及正式训练。
+
+验收完成后，提交一个正式节点，例如实验 job 0：
+
+```bash
+sbatch --job-name=nanogpt-job0 \
+  --partition=实际分区 --account=实际账户 \
+  --nodes=1 --ntasks=1 --gres=gpu:4 \
+  --cpus-per-task=16 --mem=64G --time=24:00:00 \
+  --export=ALL scripts/run_4gpu.sh node 0
+```
+
+24小时只是资源申请示例，不保证能完成八个候选。超时后重新提交同一命令、同一路径恢复，检查是否遗留锁。不要同时提交两份相同实验编号和 RUN_DIR 的作业。四卡入口直接使用 `run_4gpu.sh`；仓库另有 `slurm.sh` 通用模板，默认只申请一卡，不应不加修改地用于四卡训练。
+
+<a id="faq"></a>
+## 附录 B：常见问题
+
+| 现象 | 先检查什么 |
+|---|---|
+| `No module named nanogpt_noise` | 是否在仓库根目录、激活正确环境、用该环境的 `python -m pip install -e '.[plots]'` 安装 |
+| `CUDA unavailable` / `NCCL unavailable` | 是否装了 CPU wheel、位于已分配 GPU 的计算节点、驱动与 CUDA wheel 是否兼容 |
+| `Exactly four visible GPUs required` | 实际分配数量和 `CUDA_VISIBLE_DEVICES`；不要指定未分配的卡 |
+| `hash mismatch` / 找不到输入文件 | 下载或解压是否完整、路径是否多嵌套一层、数据和公共产物是否属于同一套 |
+| 缺 `initial.pt`、`windows.pt` 或 `identity.json` | 向项目提供者补齐；运行者不要自行生成另一套替代 |
+| `find_unused_parameters=True` 提示未发现 unused 参数 | 固定 DDP 梯度桶布局的预期开销提示；不要为了消除提示修改训练代码 |
+| 开始时较久没有 step 日志 | 正在检查文件、初始评估或写 checkpoint；结合终端错误、GPU 和磁盘状态判断 |
+| smoke 报错 | 停止批量启动，把完整报错和配置交回排查；不要只删状态文件后重跑 |
+| GitHub 发来 CI 失败邮件 | 查看对应 commit 的 Actions；它是代码测试结果，不是服务器训练状态，详见验证记录 |
+
+<a id="maintainers"></a>
+## 附录 C：设计来源与维护者操作
+
+本 README 说明如何运行，不独立维护实验参数。科学协议见[实验设计快照](docs/nanogpt_experiment_design.md)；作者工作区唯一编辑源是 `VSCode下载/New/nanogpt_experiment_design.md`，应先修改主文档再同步发布快照。
+
+- [启动脚本](scripts/run_4gpu.sh)：四卡预检、smoke 和单节点搜索入口。
+- `nanogpt_noise/protocol.py`、`search.py`：固定协议与 LR 搜索。
+- `model.py`、`optim.py`、`noise.py`：模型、优化器和噪声。
+- `data.py`、`prepare.py`：固定公共产物与可选数据制备。
+- `train.py`、`node.py`：候选训练、恢复与八候选控制。
+- `jobs.py`、`analyze.py`：任务清单和结果汇总。
+- [验证记录](docs/VALIDATION.md)：已通过的检查和未验收项目。
+
+仅维护者需要制备新公共产物时，才在新的空目录运行以下命令，之后统一分发、记录身份，不与当前产物混用：
+
+```bash
+python -m nanogpt_noise.data \
+  --data "$DATA_DIR" --artifacts "/新空目录/nanogpt-artifacts"
+```
+
+重新制备语料也不是接手运行的必需步骤。确需重制备时，另装 `python -m pip install -e '.[prepare]'`，使用 `python -m nanogpt_noise.prepare --output /新的空语料目录`。需要网络访问，不能只凭相同 seed 认定与现有数据一致，必须核对哈希；原语料未留存的依赖版本应如实标为未知。
+
+当前支持单机 DDP，不支持跨节点、FSDP 或分片优化器，不依赖 WandB。模型结构参考 nanoGPT，保留[原 MIT 声明](third_party/nanogpt-LICENSE)，不因此额外为整个研究项目授予统一开源许可。
