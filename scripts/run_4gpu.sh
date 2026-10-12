@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# One node, four GPUs sharing each candidate; never four independent candidates.
+# Four independent one-GPU workers; never parallelize candidates within one job.
 set -euo pipefail
 
 usage() {
   printf '%s\n' \
     'Usage: bash scripts/run_4gpu.sh smoke [scope optimizer noise_node]' \
     '       bash scripts/run_4gpu.sh node JOB_INDEX' \
+    '       bash scripts/run_4gpu.sh queue START_JOB END_JOB' \
     'Set DATA_DIR, ARTIFACT_DIR and RUN_DIR first (paths may contain spaces).' \
-    'smoke defaults: full muon 10, eight steps; not a formal result.' \
-    'node: JOB_INDEX=0..839; eight full-budget LR candidates, resumable.' \
-    'Optional: PYTHON=python MICRO_BATCH=4 OMP_NUM_THREADS=1.' \
-    'Allocate four GPUs first. With more visible GPUs, select four using CUDA_VISIBLE_DEVICES.'
+    'smoke: one selected GPU, eight steps, not a formal result.' \
+    'node: one selected GPU, one resumable eight-candidate job.' \
+    'queue: exactly four visible GPUs dynamically process the inclusive job interval.' \
+    'Optional: GPU_SLOT=0 PYTHON=python MICRO_BATCH=4 OMP_NUM_THREADS=1.'
 }
 
 if [[ "${1:-}" == '--help' || "${1:-}" == '-h' ]]; then
@@ -37,13 +38,20 @@ case "$MODE" in
     fi
     JOB_INDEX=$((10#$2))
     ;;
+  queue)
+    if (( $# != 3 )) || [[ ! "$2" =~ ^[0-9]{1,3}$ ]] || \
+       [[ ! "$3" =~ ^[0-9]{1,3}$ ]] || (( 10#$2 > 10#$3 )) || (( 10#$3 > 839 )); then
+      usage >&2; exit 2
+    fi
+    START_JOB=$((10#$2))
+    END_JOB=$((10#$3))
+    ;;
   *) usage >&2; exit 2 ;;
 esac
 
 : "${DATA_DIR:?Set DATA_DIR to the directory with train.bin, val.bin and meta.json}"
 : "${ARTIFACT_DIR:?Set ARTIFACT_DIR to the frozen initial.pt, windows.pt and identity.json directory}"
 : "${RUN_DIR:?Set RUN_DIR to a writable experiment output root}"
-# Resolve relative data/output paths against the caller's directory before cd.
 for variable in DATA_DIR ARTIFACT_DIR RUN_DIR; do
   if [[ "${!variable}" != /* ]]; then
     printf -v "$variable" '%s/%s' "$PWD" "${!variable}"
@@ -56,20 +64,45 @@ MICRO_BATCH="${MICRO_BATCH:-4}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export PYTHONUNBUFFERED=1
 
-"$PYTHON" -m nanogpt_noise.preflight --data "$DATA_DIR" \
-  --artifacts "$ARTIFACT_DIR" --micro-batch "$MICRO_BATCH"
-
-LAUNCH=("$PYTHON" -m torch.distributed.run --standalone --nnodes=1 \
-  --nproc-per-node=4 --max-restarts=0)
+# Preserve scheduler-provided physical IDs/UUIDs when isolating child processes.
+VISIBLE_GPU_LIST="${CUDA_VISIBLE_DEVICES:-0,1,2,3}"
+IFS=',' read -r -a GPU_TOKENS <<< "$VISIBLE_GPU_LIST"
 COMMON=(--data "$DATA_DIR" --artifacts "$ARTIFACT_DIR" --micro-batch "$MICRO_BATCH")
+
+if [[ "$MODE" == queue ]]; then
+  if (( ${#GPU_TOKENS[@]} != 4 )); then
+    printf 'queue requires exactly four CUDA_VISIBLE_DEVICES tokens; got %s\n' \
+      "${#GPU_TOKENS[@]}" >&2
+    exit 2
+  fi
+  "$PYTHON" -m nanogpt_noise.preflight "${COMMON[@]}" \
+    --expected-gpus 4 --training-world 1
+  printf 'FOUR-GPU POOL: jobs %s..%s; one independent job per GPU. Output: %s\n' \
+    "$START_JOB" "$END_JOB" "$RUN_DIR"
+  exec "$PYTHON" -m nanogpt_noise.pool "${COMMON[@]}" --output "$RUN_DIR" \
+    --start "$START_JOB" --end "$END_JOB" --gpus "$VISIBLE_GPU_LIST"
+fi
+
+GPU_SLOT="${GPU_SLOT:-0}"
+if [[ ! "$GPU_SLOT" =~ ^[0-9]+$ ]] || (( GPU_SLOT >= ${#GPU_TOKENS[@]} )); then
+  printf 'GPU_SLOT must select one of the %s CUDA_VISIBLE_DEVICES tokens\n' \
+    "${#GPU_TOKENS[@]}" >&2
+  exit 2
+fi
+SELECTED_GPU="${GPU_TOKENS[$GPU_SLOT]}"
+printf 'Selected GPU slot %s (CUDA_VISIBLE_DEVICES=%s)\n' "$GPU_SLOT" "$SELECTED_GPU"
+CUDA_VISIBLE_DEVICES="$SELECTED_GPU" "$PYTHON" -m nanogpt_noise.preflight \
+  "${COMMON[@]}" --expected-gpus 1 --training-world 1
+
 if [[ "$MODE" == smoke ]]; then
-  OUTPUT="$RUN_DIR/smoke/4gpu/$SCOPE-$OPTIMIZER-node$NOISE_NODE"
-  printf 'Four-GPU SMOKE: %s (8 steps, not formal training)\n' "$OUTPUT"
-  exec "${LAUNCH[@]}" -m nanogpt_noise.train "${COMMON[@]}" \
-    --output "$OUTPUT" --scope "$SCOPE" --optimizer "$OPTIMIZER" \
-    --node "$NOISE_NODE" --exponent 0 --smoke-steps 8
+  OUTPUT="$RUN_DIR/smoke/1gpu/$SCOPE-$OPTIMIZER-node$NOISE_NODE"
+  printf 'ONE-GPU SMOKE: %s (8 steps, not formal training)\n' "$OUTPUT"
+  CUDA_VISIBLE_DEVICES="$SELECTED_GPU" exec "$PYTHON" -m nanogpt_noise.train \
+    "${COMMON[@]}" --output "$OUTPUT" --scope "$SCOPE" \
+    --optimizer "$OPTIMIZER" --node "$NOISE_NODE" --exponent 0 --smoke-steps 8
 else
-  printf 'Four-GPU FORMAL: job %s, eight full-budget candidates. Output: %s\n' "$JOB_INDEX" "$RUN_DIR"
-  exec "${LAUNCH[@]}" -m nanogpt_noise.node "${COMMON[@]}" \
-    --output "$RUN_DIR" --job-index "$JOB_INDEX"
+  printf 'ONE-GPU FORMAL: job %s, eight sequential full-budget candidates. Output: %s\n' \
+    "$JOB_INDEX" "$RUN_DIR"
+  CUDA_VISIBLE_DEVICES="$SELECTED_GPU" exec "$PYTHON" -m nanogpt_noise.node \
+    "${COMMON[@]}" --output "$RUN_DIR" --job-index "$JOB_INDEX"
 fi

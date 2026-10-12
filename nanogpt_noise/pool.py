@@ -1,0 +1,147 @@
+"""Run independent NanoGPT jobs on a dynamic one-job-per-GPU worker pool."""
+import argparse
+from datetime import datetime, timezone
+import os
+from pathlib import Path
+import queue
+import signal
+import subprocess
+import sys
+import threading
+
+
+def run_pool(jobs, gpus, runner, on_failure=None):
+    """Run each job once; an idle GPU claims the next queued job."""
+    jobs = list(jobs)
+    gpus = list(gpus)
+    if not gpus:
+        raise ValueError('at least one GPU token is required')
+    if len(set(gpus)) != len(gpus):
+        raise ValueError('GPU tokens must be unique')
+    pending = queue.Queue()
+    for job in jobs:
+        pending.put(job)
+    stop = threading.Event()
+    failures = []
+    failure_lock = threading.Lock()
+
+    def worker(gpu):
+        while not stop.is_set():
+            try:
+                job = pending.get_nowait()
+            except queue.Empty:
+                return
+            if stop.is_set():
+                pending.task_done()
+                return
+            try:
+                code = runner(gpu, job)
+            except Exception:
+                code = 1
+            finally:
+                pending.task_done()
+            if code:
+                first = False
+                with failure_lock:
+                    if not failures:
+                        failures.append((job, code))
+                        stop.set()
+                        first = True
+                if first and on_failure is not None:
+                    on_failure()
+                return
+
+    threads = [threading.Thread(target=worker, args=(gpu,), name=f'gpu-{gpu}')
+               for gpu in gpus]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    return failures
+
+
+class SubprocessRunner:
+    def __init__(self, args, log_dir):
+        self.args = args
+        self.log_dir = Path(log_dir)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.active = set()
+        self.lock = threading.Lock()
+
+    def __call__(self, gpu, job):
+        path = self.log_dir / f'job_{job:04d}.log'
+        command = [sys.executable, '-m', 'nanogpt_noise.node',
+                   '--data', self.args.data, '--artifacts', self.args.artifacts,
+                   '--output', self.args.output, '--micro-batch', str(self.args.micro_batch),
+                   '--job-index', str(job)]
+        env = dict(os.environ, CUDA_VISIBLE_DEVICES=gpu, PYTHONUNBUFFERED='1')
+        stamp = datetime.now(timezone.utc).isoformat()
+        print(f'[pool] GPU {gpu}: start job {job}; log={path}', flush=True)
+        with path.open('a', encoding='utf-8') as log:
+            log.write(f'\n[{stamp}] GPU token {gpu}: {command!r}\n')
+            log.flush()
+            process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
+                                       env=env)
+            with self.lock:
+                self.active.add(process)
+            try:
+                code = process.wait()
+            finally:
+                with self.lock:
+                    self.active.discard(process)
+        print(f'[pool] GPU {gpu}: job {job} exited {code}', flush=True)
+        return code
+
+    def terminate_all(self):
+        with self.lock:
+            processes = list(self.active)
+        for process in processes:
+            if process.poll() is None:
+                process.terminate()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--start', type=int, required=True)
+    parser.add_argument('--end', type=int, required=True)
+    parser.add_argument('--gpus', required=True,
+                        help='comma-separated CUDA_VISIBLE_DEVICES tokens')
+    parser.add_argument('--data', required=True)
+    parser.add_argument('--artifacts', required=True)
+    parser.add_argument('--output', required=True)
+    parser.add_argument('--micro-batch', type=int, default=4)
+    args = parser.parse_args()
+    if not (0 <= args.start <= args.end <= 839):
+        parser.error('job interval must satisfy 0 <= start <= end <= 839')
+    gpus = [item.strip() for item in args.gpus.split(',') if item.strip()]
+    if len(gpus) != 4 or len(set(gpus)) != 4:
+        parser.error('--gpus must contain exactly four unique tokens')
+
+    runner = SubprocessRunner(args, Path(args.output) / 'launcher')
+    interrupted = threading.Event()
+
+    def stop(signum, _frame):
+        interrupted.set()
+        print(f'[pool] received signal {signum}; stopping active jobs', flush=True)
+        runner.terminate_all()
+
+    previous = {number: signal.signal(number, stop)
+                for number in (signal.SIGINT, signal.SIGTERM)}
+    try:
+        failures = run_pool(range(args.start, args.end + 1), gpus, runner,
+                            on_failure=runner.terminate_all)
+        if interrupted.is_set():
+            raise SystemExit(130)
+        if failures:
+            runner.terminate_all()
+            job, code = failures[0]
+            print(f'[pool] stopped after job {job} failed with exit {code}; '
+                  'rerun the same interval to resume', file=sys.stderr, flush=True)
+            raise SystemExit(code)
+    finally:
+        for number, handler in previous.items():
+            signal.signal(number, handler)
+
+
+if __name__ == '__main__':
+    main()

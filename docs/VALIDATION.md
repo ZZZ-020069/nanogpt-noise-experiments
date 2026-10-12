@@ -1,11 +1,11 @@
-# Implementation validation — 2026-10-10
+# Implementation validation — 2026-10-12
 
 These checks are implementation tests, not research results.
 
 ## Passed locally
 
 - Windows, Python 3.13.5, PyTorch 2.9.1+cpu, NumPy 2.1.3.
-- `python -m unittest discover -s tests -v`: 26 tests passed (19 core tests plus 7 launcher/preflight tests).
+- `python -m unittest discover -s tests -v`: 34 tests passed, including the core protocol, launcher/preflight and independent-GPU pool tests.
 - Exact 124,373,760 full-model and 7,079,424 × k trainable parameter counts; tied weights and frozen scopes.
 - Muon formula and 0.03 auxiliary binding; Adam/AdamW/SGD decay; LR-zero optimizer-state update.
 - Noise RMS, clean behavior, independent RNG and missing-gradient errors.
@@ -17,10 +17,13 @@ These checks are implementation tests, not research results.
 - Actual fixed corpus metadata/size/token-range/hash checks; common 124M initialization and all window indices generated.
 - Python compile checks, Bash syntax checks, design snapshot synchronization, complete 840-job dry manifest.
 - Empty-result CSV/JSON and 30 heatmap rendering smoke checks (these blank images are not experimental results).
-- Four-GPU Bash dispatch tested with a stub executable: smoke/formal separation, four workers, paths with spaces, invalid arguments and preflight error propagation. CUDA checks are mocked in unit tests, not hardware validation.
+- Production launch dispatch tested with a stub executable: one-GPU smoke/formal isolation, preservation of scheduler GPU tokens, four independent workers, paths with spaces, invalid arguments and preflight error propagation. CUDA checks are mocked in unit tests, not hardware validation.
+- The dynamic pool runs each job exactly once in a test interval, never overlaps two jobs on one GPU worker, and stops new assignments after the first child failure. A production failure also terminates active children so that the same interval can be resubmitted for checkpoint recovery.
 - Smoke numerical failures now exit nonzero (2); infrastructure interruption remains 75. Formal numerical-failure accounting is unchanged.
 
 ## Remote CI evidence
+
+- The independent one-GPU-per-job pool change has passed the local CPU suite and Bash syntax checks but has not yet been validated by GitHub Actions or H100 hardware.
 
 - The initial implementation commit `3c30469` passed Linux CPU unit tests and the original two-rank AdamW/Muon Gloo resume smoke in [Actions run 37866003505](https://github.com/ZZZ-020069/nanogpt-noise-experiments/actions/runs/37866003505).
 - Commit `b65d8af` passed all 26 unit tests, Bash syntax validation, and both two-rank and four-rank Linux Gloo checks in [Actions run 38032717104](https://github.com/ZZZ-020069/nanogpt-noise-experiments/actions/runs/38032717104). Distributed coverage includes all four optimizers, full/last1 scopes, gradient accumulation, noisy gradients, bitwise checkpoint resume and a single-rank NaN failure propagated to all ranks.
@@ -29,7 +32,7 @@ These checks are implementation tests, not research results.
 ## Not yet validated
 
 - H100 CUDA/BF16 kernels, memory peak, runtime/driver combination and throughput.
-- Linux NCCL multi-GPU execution and target-server signal/restart behavior.
+- Target-server four-process independent CUDA execution and signal/restart behavior. NCCL is not required by the production pool because every training process has world size one; the retained DDP regression tests remain CPU/Gloo implementation coverage only.
 - Local Windows Gloo: torchrun lacks libuv support; direct FileStore fallback reaches an unsupported Gloo device error. The Linux CI evidence above is separate from local execution.
 - Online data re-preparation and exact reproduction across tokenizer/datasets versions. Existing corpus metadata does not preserve its original preparation dependency versions.
 
