@@ -61,7 +61,16 @@ python -m pip install -e '.[plots]'
 
 ## 4. 准备数据、公共产物与目录
 
-GitHub 不包含大型数据文件。服务器需要以下结构：
+GitHub 不包含大型数据文件。这里要区分“需要提前传到服务器的输入”和“在服务器上新建的输出目录”：
+
+| 变量 | 内容 | 是否需要提前传输 |
+|---|---|---|
+| `DATA_DIR` | `train.bin`、`val.bin` 和 `meta.json` | **需要**。这是训练输入，必须提前上传到服务器 |
+| `ARTIFACT_DIR` | `initial.pt`、`windows.pt` 和 `identity.json` | **需要**。这是统一初始化和固定窗口产物，必须提前上传到服务器 |
+| `RUN_BASE` | 六个 scope 输出目录的父目录 | **不需要上传**。在服务器的大容量计算盘或项目盘上创建一个空目录即可 |
+| `RUN_DIR` | 当前一个 scope 的实际输出目录，例如 `RUN_BASE/full` | **不需要提前上传**。程序运行时自动产生内容；scope 完成后再从服务器下载到本地 |
+
+因此，“结果根目录”不是需要传给学长的数据包，也不是仓库的一部分；它只是学长在服务器上选择的一个可写位置。优先放在容量足够的 `/scratch/...` 或学校项目盘中，不要在未确认配额时放进个人 home 目录。服务器建议采用以下结构：
 
 ```text
 数据目录/                              -> DATA_DIR
@@ -74,13 +83,13 @@ GitHub 不包含大型数据文件。服务器需要以下结构：
 ├── windows.pt                        # 固定训练与评估窗口
 └── identity.json                     # 文件哈希与身份
 
-结果根目录/
+结果根目录/                           -> RUN_BASE，在服务器上新建
 ├── full/                             # 一次只存在当前 scope
 ├── last1/
 └── ...
 ```
 
-设置绝对路径。`RUN_BASE` 是六个 scope 的父目录，`RUN_DIR` 每次必须指向一个具体 scope：
+设置绝对路径。下面示例中，前两个目录需要提前传好内容；`RUN_BASE` 只需由学长在服务器上创建。`RUN_DIR` 每次必须指向一个具体 scope：
 
 ```bash
 export DATA_DIR="/实际路径/openwebtext_subset/data"
@@ -91,6 +100,15 @@ mkdir -p "$RUN_BASE"
 ls -lh "$DATA_DIR/train.bin" "$DATA_DIR/val.bin" "$DATA_DIR/meta.json"
 ls -lh "$ARTIFACT_DIR/initial.pt" "$ARTIFACT_DIR/windows.pt" "$ARTIFACT_DIR/identity.json"
 df -B1 "$RUN_BASE"
+```
+
+数据传输方向可以概括为：
+
+```text
+实验开始前：你的本地 DATA_DIR、ARTIFACT_DIR  ->  H100 服务器
+实验运行时：H100 服务器在 RUN_DIR 中生成结果
+每个 scope 完成后：服务器 RUN_DIR  ->  你的本地结果目录
+本地校验通过后：清空服务器上的这个 RUN_DIR，再运行下一个 scope
 ```
 
 公共产物沿用已冻结的 manifest，ID 应为：
