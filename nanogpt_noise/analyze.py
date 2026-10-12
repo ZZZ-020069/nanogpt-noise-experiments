@@ -14,11 +14,18 @@ def auc(curve):
                for a,b in zip(curve,curve[1:]))/curve[-1]['tokens']
 
 
-def collect(root):
+def collect(roots):
+    if isinstance(roots,(str,Path)):
+        roots=[roots]
+    roots=[Path(root) for root in roots]
     rows=[]
     cohort=None
     for index,job in enumerate(grid()):
-        path=Path(root)/f'job_{index:04d}'/'search.json'
+        matches=[root/f'job_{index:04d}'/'search.json' for root in roots
+                 if (root/f'job_{index:04d}'/'search.json').exists()]
+        if len(matches)>1:
+            raise ValueError(f'job {index:04d} appears in multiple scope roots')
+        path=matches[0] if matches else roots[0]/f'job_{index:04d}'/'search.json'
         row=dict(job_index=index,**job,search_complete=False,status='missing',loss=None,
                  best_lr=None,valid_count=0,boundary_unclosed=None,delta_loss=None,auc=None)
         if path.exists():
@@ -86,7 +93,8 @@ def plot(rows,output):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--runs',required=True)
+    p.add_argument('--runs',required=True,nargs='+',
+                   help='one or more downloaded scope directories')
     p.add_argument('--output',required=True)
     p.add_argument('--plots',action='store_true')
     a=p.parse_args()

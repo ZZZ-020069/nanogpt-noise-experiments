@@ -4,6 +4,8 @@ import unittest
 from unittest.mock import patch
 import numpy as np
 import torch
+import gzip
+import json
 from nanogpt_noise.artifacts import write_json,read_json,tensor_hash
 from nanogpt_noise.data import freeze,verify
 from nanogpt_noise.protocol import configuration,grid
@@ -50,12 +52,20 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(a['mode'],'test')
             sa=torch.load(uninterrupted/'final.pt',weights_only=True)
             sb=torch.load(resumed/'final.pt',weights_only=True)
+            self.assertFalse((uninterrupted/'latest.pt').exists())
+            self.assertFalse((uninterrupted/'best.pt').exists())
             for name,value in sa['model'].items():
                 self.assertTrue(torch.equal(value,sb['model'][name]),name)
             meta=read_json(resumed/'metadata.json')
             self.assertEqual(meta['frozen_hash'],b['frozen_hash_final'])
             again=run(cfg,self.data,self.artifacts,resumed,micro=2,runtime=self.rt,test=True)
             self.assertEqual(again,b)
+            # Simulate a hard kill after latest -> final but before completed
+            # status became durable. The final snapshot must close the run.
+            write_json(resumed/'status.json',dict(status='infrastructure_failure'))
+            recovered=run(cfg,self.data,self.artifacts,resumed,micro=2,runtime=self.rt,test=True)
+            self.assertEqual(recovered['status'],'completed')
+            self.assertEqual(recovered['loss'],b['loss'])
             with self.assertRaises(ValueError):
                 run(configuration('last1',kind,10,.5),self.data,self.artifacts,resumed,micro=2,runtime=self.rt,test=True)
 
@@ -76,6 +86,16 @@ class IntegrationTests(unittest.TestCase):
         self.assertTrue(result['complete'])
         self.assertEqual(len(result['candidates']),8)
         self.assertEqual(result['valid_count'],8)
+        winner=result['winner']['candidate']
+        checkpoints=sorted(path.relative_to(self.root/'node').as_posix()
+                           for path in (self.root/'node').rglob('*.pt'))
+        self.assertEqual(checkpoints,[f'candidate_{winner:02d}/final.pt'])
+        for index in range(8):
+            candidate=self.root/'node'/f'candidate_{index:02d}'
+            self.assertFalse((candidate/'steps').exists())
+            with gzip.open(candidate/'steps.jsonl.gz','rt',encoding='utf8') as source:
+                records=[json.loads(line) for line in source]
+            self.assertEqual([record['step'] for record in records],[1,2,3,4])
         again=run_node(grid()[0],self.data,self.artifacts,self.root/'node',micro=2,runtime=self.rt,test=True)
         self.assertEqual(again,result)
         self.assertIsNotNone(auc(read_json(self.root/'node'/'candidate_00'/'evaluations.json')))
@@ -87,6 +107,10 @@ class IntegrationTests(unittest.TestCase):
         rows=collect(self.root/'empty')
         self.assertEqual(len(rows),840)
         self.assertTrue(all(r['loss'] is None for r in rows))
+        first,second=self.root/'scope-a',self.root/'scope-b'
+        write_json(second/'job_0140'/'search.json',dict(mode='test'))
+        rows=collect([first,second])
+        self.assertEqual(rows[140]['status'],'excluded_nonformal')
 
     def test_finite_large_loss_is_not_early_stopped(self):
         cfg=configuration('full','sgd',0,0)

@@ -7,11 +7,10 @@
 #SBATCH --mem=64G
 #SBATCH --time=24:00:00
 # Partition/account/GPU type are supplied with sbatch arguments by the operator.
-# Four GPUs run four independent experiment jobs. START_JOB..END_JOB is inclusive.
+# Four GPUs run four independent experiment jobs from one named scope.
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:?}"
-: "${START_JOB:?Export START_JOB before sbatch}"
-: "${END_JOB:?Export END_JOB before sbatch}"
+: "${SCOPE:?Export SCOPE as full, last1, last2, last3, last6 or last12 before sbatch}"
 # Split the requested host threads across the four independent Python workers.
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"
-bash scripts/run_4gpu.sh queue "$START_JOB" "$END_JOB"
+bash scripts/run_4gpu.sh scope "$SCOPE"

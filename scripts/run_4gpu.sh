@@ -6,11 +6,13 @@ usage() {
   printf '%s\n' \
     'Usage: bash scripts/run_4gpu.sh smoke [scope optimizer noise_node]' \
     '       bash scripts/run_4gpu.sh node JOB_INDEX' \
+    '       bash scripts/run_4gpu.sh scope SCOPE' \
     '       bash scripts/run_4gpu.sh queue START_JOB END_JOB' \
     'Set DATA_DIR, ARTIFACT_DIR and RUN_DIR first (paths may contain spaces).' \
     'smoke: one selected GPU, eight steps, not a formal result.' \
     'node: one selected GPU, one resumable eight-candidate job.' \
-    'queue: exactly four visible GPUs dynamically process the inclusive job interval.' \
+    'scope: production mode; four GPUs process exactly one named 140-job scope.' \
+    'queue: expert mode; four GPUs process a custom inclusive job interval.' \
     'Optional: GPU_SLOT=0 PYTHON=python MICRO_BATCH=4 OMP_NUM_THREADS=1.'
 }
 
@@ -37,6 +39,19 @@ case "$MODE" in
       usage >&2; exit 2
     fi
     JOB_INDEX=$((10#$2))
+    ;;
+  scope)
+    if (( $# != 2 )); then usage >&2; exit 2; fi
+    SCOPE="$2"
+    case "$SCOPE" in
+      full) START_JOB=0; END_JOB=139 ;;
+      last1) START_JOB=140; END_JOB=279 ;;
+      last2) START_JOB=280; END_JOB=419 ;;
+      last3) START_JOB=420; END_JOB=559 ;;
+      last6) START_JOB=560; END_JOB=699 ;;
+      last12) START_JOB=700; END_JOB=839 ;;
+      *) usage >&2; exit 2 ;;
+    esac
     ;;
   queue)
     if (( $# != 3 )) || [[ ! "$2" =~ ^[0-9]{1,3}$ ]] || \
@@ -69,14 +84,18 @@ VISIBLE_GPU_LIST="${CUDA_VISIBLE_DEVICES:-0,1,2,3}"
 IFS=',' read -r -a GPU_TOKENS <<< "$VISIBLE_GPU_LIST"
 COMMON=(--data "$DATA_DIR" --artifacts "$ARTIFACT_DIR" --micro-batch "$MICRO_BATCH")
 
-if [[ "$MODE" == queue ]]; then
+if [[ "$MODE" == queue || "$MODE" == scope ]]; then
   if (( ${#GPU_TOKENS[@]} != 4 )); then
-    printf 'queue requires exactly four CUDA_VISIBLE_DEVICES tokens; got %s\n' \
+    printf '%s requires exactly four CUDA_VISIBLE_DEVICES tokens; got %s\n' \
+      "$MODE" \
       "${#GPU_TOKENS[@]}" >&2
     exit 2
   fi
   "$PYTHON" -m nanogpt_noise.preflight "${COMMON[@]}" \
     --expected-gpus 4 --training-world 1
+  if [[ "$MODE" == scope ]]; then
+    "$PYTHON" -m nanogpt_noise.scope prepare --runs "$RUN_DIR" --scope "$SCOPE"
+  fi
   printf 'FOUR-GPU POOL: jobs %s..%s; one independent job per GPU. Output: %s\n' \
     "$START_JOB" "$END_JOB" "$RUN_DIR"
   exec "$PYTHON" -m nanogpt_noise.pool "${COMMON[@]}" --output "$RUN_DIR" \

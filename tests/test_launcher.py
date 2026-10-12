@@ -140,10 +140,21 @@ class ShellTests(unittest.TestCase):
         self.assertIn('ARG=<--gpus>\nARG=<4,6,7,9>', result.stdout)
         self.assertNotIn('torch.distributed.run', result.stdout)
 
+    def test_named_scope_dispatch(self):
+        result = self.invoke('scope', 'last3')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('ARG=<nanogpt_noise.scope>', result.stdout)
+        self.assertIn('ARG=<prepare>', result.stdout)
+        self.assertIn('ARG=<--scope>\nARG=<last3>', result.stdout)
+        self.assertIn('ARG=<nanogpt_noise.pool>', result.stdout)
+        self.assertIn('ARG=<--start>\nARG=<420>', result.stdout)
+        self.assertIn('ARG=<--end>\nARG=<559>', result.stdout)
+
     def test_invalid_and_preflight_failure(self):
         for args in ((), ('node',), ('node', '840'), ('node', '-1'),
                      ('node', 'xyz'), ('node', '0', 'extra'),
                      ('queue',), ('queue', '4', '3'), ('queue', '0', '840'),
+                     ('scope',), ('scope', 'invalid'), ('scope', 'full', 'extra'),
                      ('unknown',)):
             result = self.invoke(*args)
             self.assertNotEqual(result.returncode, 0, args)

@@ -5,7 +5,7 @@ These checks are implementation tests, not research results.
 ## Passed locally
 
 - Windows, Python 3.13.5, PyTorch 2.9.1+cpu, NumPy 2.1.3.
-- `python -m unittest discover -s tests -v`: 34 tests passed, including the core protocol, launcher/preflight and independent-GPU pool tests.
+- `python -m unittest discover -s tests -v`: 41 tests passed, including the core protocol, launcher/preflight, independent-GPU pool, scope isolation and retention tests.
 - Exact 124,373,760 full-model and 7,079,424 × k trainable parameter counts; tied weights and frozen scopes.
 - Muon formula and 0.03 auxiliary binding; Adam/AdamW/SGD decay; LR-zero optimizer-state update.
 - Noise RMS, clean behavior, independent RNG and missing-gradient errors.
@@ -20,6 +20,9 @@ These checks are implementation tests, not research results.
 - Production launch dispatch tested with a stub executable: one-GPU smoke/formal isolation, preservation of scheduler GPU tokens, four independent workers, paths with spaces, invalid arguments and preflight error propagation. CUDA checks are mocked in unit tests, not hardware validation.
 - The dynamic pool runs each job exactly once in a test interval, never overlaps two jobs on one GPU worker, and stops new assignments after the first child failure. A production failure also terminates active children so that the same interval can be resubmitted for checkpoint recovery.
 - Smoke numerical failures now exit nonzero (2); infrastructure interruption remains 75. Formal numerical-failure accounting is unchanged.
+- Terminal candidates losslessly compact per-step JSON into verified gzip JSONL; repeated compaction is idempotent. Each job retains only its current/final winner's single full checkpoint, including optimizer state.
+- Named scope launch covers the exact 140-job ranges. Scope preparation rejects cross-scope output reuse; finalization checks completion and retention, produces a per-file SHA-256 manifest, downloaded copies detect size/hash tampering, and cleanup requires a finalized directory plus a scope-specific confirmation token.
+- Static checkpoint accounting estimates decimal peak storage at 195.58 GB for `full`, 84.03 GB for `last1`, 90.43 GB for `last2`, 96.83 GB for `last3`, 116.03 GB for `last6`, and 154.43 GB for `last12`. These are implementation calculations, not target-filesystem measurements.
 
 ## Remote CI evidence
 
@@ -32,6 +35,7 @@ These checks are implementation tests, not research results.
 ## Not yet validated
 
 - H100 CUDA/BF16 kernels, memory peak, runtime/driver combination and throughput.
+- Actual target-filesystem scope peak, filesystem metadata overhead, transfer duration and local-copy verification at full scale; the 195.58 GB `full` estimate has not yet been measured on H100 output.
 - Target-server four-process independent CUDA execution and signal/restart behavior. NCCL is not required by the production pool because every training process has world size one; the retained DDP regression tests remain CPU/Gloo implementation coverage only.
 - Local Windows Gloo: torchrun lacks libuv support; direct FileStore fallback reaches an unsupported Gloo device error. The Linux CI evidence above is separate from local execution.
 - Online data re-preparation and exact reproduction across tokenizer/datasets versions. Existing corpus metadata does not preserve its original preparation dependency versions.

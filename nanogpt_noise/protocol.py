@@ -7,7 +7,7 @@ SIGMA2 = (0., .0001, .001, .01, .1, 1., 10.)
 SCOPES = ('full', 'last1', 'last2', 'last3', 'last6', 'last12')
 CENTERS = dict(adamw=.0006, adam=.0006, sgd=.01, muon=.02)
 INITIAL = (-1., -.5, 0., .5, 1.)
-VERSION = 'v1.4'
+VERSION = 'v1.5'
 SEEDS = dict(initialization=1337, data=1337, noise=20260902,
              eval_train=20260829, eval_val=20260830, preparation=2357)
 

@@ -1,8 +1,8 @@
 # NanoGPT–Quadratic Proxy 实验设计主文档
 
 > **状态**：实验设计基线 / 实施前验证  
-> **版本**：v1.4  
-> **最后更新**：2026-10-08  
+> **版本**：v1.5  
+> **最后更新**：2026-10-12  
 > **用途**：本文件是 NanoGPT–Quadratic Proxy 项目的第一份独立实验设计基线，也是后续实现与修订的唯一设计依据。读者无需查阅对话或其他实验文档即可理解本文规定的参数与流程。设计设定不代表已取得实验结果；实施检查和后续研究事项见第 12 节。
 
 ---
@@ -478,7 +478,7 @@ Full-parameter 加五个 last-k 设置共形成 6 个 NanoGPT trainable scope。
 
 个 optimizer/noise/scope 配置。每个配置统一测试八个完整预算 LR，共计 6720 条候选轨迹，按约 2.6B 计名义总预算 **17.472T tokens**；按整步实际预算计为 **17.4751481856T tokens**。这不包括网格外补点与基础设施重试；winner 不额外重训，数值失败按实际消耗计。该预算是实验规模核算，不代表已分配或已获准启动这些算力任务。
 
-实验天然属于 embarrassingly parallel workload。
+实验天然属于 embarrassingly parallel workload，但运行时存储上限按约 200 GB 规划。六个 scope 必须分别运行、分别转移和分别清理，不能在算力节点同时保留多个 scope 的结果。每个 scope 固定包含 140 个 optimizer/noise 配置；四张 H100 分别运行四个独立配置，每个配置内部顺序完成八个 LR 候选，空闲 GPU 再领取同一 scope 的下一个配置。一个 scope 完成后，先生成完整性 manifest，将整个 scope 目录下载到本地并通过逐文件 SHA-256 校验，随后才能清空算力节点上的该 scope 目录并开始下一个 scope。恢复尚未完成的 scope 时必须继续使用原目录；已生成最终 manifest 的目录不得继续写入。
 
 不同：
 
@@ -490,6 +490,8 @@ Full-parameter 加五个 last-k 设置共形成 6 个 NanoGPT trainable scope。
 之间大多是独立 job。
 
 因此优先考虑多张 GPU 同时分别运行多个独立训练任务，而不一定把所有 GPU 用于一个 NanoGPT 的 DDP。
+
+存储采用 winner-only checkpoint 策略。按 FP32 模型和当前优化器状态估算，六个 scope 中峰值最高的是 full：140 个最终 winner checkpoint 约 179.64 GB；四个活跃任务在原子 checkpoint 写入时额外预留约 11.94 GB；数据、公共产物、压缩日志和 metadata 合计预留 4 GB，协议估算峰值约 **195.58 GB**。其余 scope 更低。该估算不是实机测量值，首次 H100 smoke 与正式小批次必须核验实际文件大小；运行中不得同时启动两个 scope、保留上一 scope 的服务器副本或在服务器端另建同体积压缩包。这里不设置自动磁盘水位保护，空间确认与 scope 交接由运行者负责。
 
 后续代码设计应支持：
 
@@ -515,7 +517,7 @@ Full-parameter 加五个 last-k 设置共形成 6 个 NanoGPT trainable scope。
 
 ### 10.2 日志与诊断
 
-所有候选保存完整评估曲线。每步保存 step、累计 tokens、当步训练 loss、主/辅助 LR、有限性状态和加噪前梯度范数；每 10 步及首末步记录完整诊断：理论噪声 RMS、实际噪声范数、加噪后梯度范数、两种 noise-to-gradient ratio、梯度夹角余弦、D、逐元素噪声标准差、可训练参数范数、实际参数更新范数、相对初始化的参数位移、`||Δθ||/||g||`。update norm 指包含 decay 和所有辅助组的实际参数变化，不是 η||g||；最后这个比值只是诊断，不等同于自适应优化器的统一有效 LR。
+所有候选保存完整评估曲线。每步保存 step、累计 tokens、当步训练 loss、主/辅助 LR、有限性状态和加噪前梯度范数；每 10 步及首末步记录完整诊断：理论噪声 RMS、实际噪声范数、加噪后梯度范数、两种 noise-to-gradient ratio、梯度夹角余弦、D、逐元素噪声标准差、可训练参数范数、实际参数更新范数、相对初始化的参数位移、`||Δθ||/||g||`。update norm 指包含 decay 和所有辅助组的实际参数变化，不是 η||g||；最后这个比值只是诊断，不等同于自适应优化器的统一有效 LR。候选进入完成或数值失败终态后，逐步 JSON 按 step 顺序无损合并为 gzip JSONL，并在删除散文件前校验条数、连续 step 和压缩文件 SHA-256；这只改变存储形式，不降采样、不删字段。
 
 零分母显式记录 undefined/Inf 及原因；clean 噪声范数为零。统计均在去重后的可训练参数集合计算，参数位移相对于统一未训练初始状态。full 与 last-k 同时保存 names/shapes/count、冻结参数校验和，确认冻结参数不变；full D=124,373,760，last-k D=7,079,424×k。Muon 另存主组和辅助组的参数清单与 LR。
 
@@ -523,11 +525,13 @@ metadata 包括设计版本、代码/配置哈希、数据和初始权重哈希�
 
 ### 10.3 Checkpoint 与断点恢复
 
-Checkpoint 分为 latest、best 和 final：每次评估后保存可恢复的 latest，另保留最低验证 loss 的 best 供诊断，完整预算保存 final；LR 选择只看 final。Checkpoint 包含模型、全部优化器及辅助组状态、scheduler/step/tokens、随机流状态或可重建索引、配置和数据身份；采用原子写入。只从同一候选的 latest 接续；跨 scope、optimizer、噪声节点或 LR 不共享训练后 checkpoint。成功的 winner 直接使用已完成轨迹，无需再次跑相同 seed。
+候选运行期间只维护一个可恢复的 `latest`，每次评估后采用原子写入；完整预算结束时将最后一次 `latest` 原子重命名为 `final`，不另存 `best`，LR 选择仍只看完整预算末尾 loss。Checkpoint 包含模型、全部优化器及辅助组状态、scheduler/step/tokens、随机流状态或可重建索引、配置和数据身份。只从同一候选的 `latest` 接续；跨 scope、optimizer、噪声节点或 LR 不共享训练后 checkpoint。
+
+一个 optimizer/noise/scope 配置完成每个候选并持久化搜索记录后，只保留当前 winner 的一个 `final` checkpoint；非 winner 的 `latest`、`final` 和数值失败 checkpoint 均删除。后续候选改变 winner 时同步删除旧 winner checkpoint。八个候选结束后，最终 winner 保留模型与完整优化器/辅助组状态，便于后续诊断和严格恢复；若八个候选全部数值失败，则不保留 checkpoint。删除 checkpoint 不删除任何候选的 metadata、状态、评估曲线、搜索记录或无损压缩诊断。成功的 winner 直接使用已完成轨迹，无需再次跑相同 seed。
 
 ### 10.4 交付物与实现约束
 
-每个候选至少交付配置与 metadata、训练诊断日志、固定窗口评估曲线、完成/失败状态及 checkpoint。每个 optimizer/noise/scope 配置额外交付八个候选的汇总、选择依据、winner 和边界标志；实验总体交付 35 点响应面、相对 clean 的变化、优化器排序和数值失败分布。
+每个候选至少交付配置与 metadata、无损压缩训练诊断日志、固定窗口评估曲线及完成/失败状态；checkpoint 按第 10.3 节只随每个配置的最终 winner 交付。每个 optimizer/noise/scope 配置额外交付八个候选的汇总、选择依据、winner 和边界标志；每个 scope 交付逐文件路径、大小和 SHA-256 manifest；实验总体交付 35 点响应面、相对 clean 的变化、优化器排序和数值失败分布。六个已下载 scope 可以从独立目录共同汇总，不要求重新合并成一个大型服务器目录。
 
 本文给出的公式、参数集合、数值设置和执行顺序是实现验收依据。运行结果须注明设计版本；代码实现完成后记录其提交或文件哈希。尚未通过一致性检查的实现与 smoke test 输出应分别标注，不能当作正式结果。
 
@@ -568,7 +572,7 @@ NanoGPT 主网格的参数、Muon 学习率绑定与第 5.3 节追加策略均�
 
 ### 12.1 实施产物登记 — 2026-10-08
 
-NanoGPT 实现位于 `VSCode下载/New/nanogpt-noise-experiments/`，协议仍为 v1.4；仓库中的 `docs/nanogpt_experiment_design.md` 仅为本文件的发布快照，不另行维护。代码提交身份和实现文件哈希由每条 run 的 metadata 记录。本次没有启动正式训练或取得正式实验结果。
+NanoGPT 实现位于 `VSCode下载/New/nanogpt-noise-experiments/`，协议为 v1.5；仓库中的 `docs/nanogpt_experiment_design.md` 仅为本文件的发布快照，不另行维护。代码提交身份和实现文件哈希由每条 run 的 metadata 记录。本次没有启动正式训练或取得正式实验结果。
 
 已对固定数据进行尺寸、token 范围和元数据核验，并生成以下 SHA-256：
 
@@ -582,11 +586,15 @@ NanoGPT 实现位于 `VSCode下载/New/nanogpt-noise-experiments/`，协议仍�
 
 源数据 revision 为 `79d93d786212f7344586290adb811d4ae6a1762c`。公共产物 manifest ID 为 `9cabd9c54c6d717354f8f6750715f9280c5502f0a85a9032806b9c7956cbd76e`；初始化与窗口制备环境为 PyTorch 2.9.1+cpu、NumPy 2.1.3。语料原制备时的 tokenizer/依赖版本未保存在其 meta.json 中，当前不得补写为已知版本。该缺项与文件身份分开记录。
 
-本地 CPU 测试只验证实现，包括模型参数集合、噪声、搜索、失败标签和恢复一致性；H100 BF16 与 Linux NCCL 分布式验收仍需在目标硬件完成。Windows Gloo 连接测试受当前构建限制未通过，不视为分布式验收通过。公共权重和数据产物不属于研究结果。
+本地 CPU 测试只验证实现，包括模型参数集合、噪声、搜索、失败标签、恢复一致性、scope 隔离、日志压缩和交付 manifest；H100 BF16、四个独立单卡进程、实际 checkpoint 大小及峰值存储仍需在目标硬件完成。公共权重和数据产物不属于研究结果。
 
 ---
 
 ## 13. 基线版本与修订规则
+
+### v1.5 — 2026-10-12
+
+为适配约 200 GB 的算力节点存储，六个 NanoGPT scope 改为逐 scope 独立运行、校验下载并人工清空后再继续。候选逐步诊断无损压缩；每个配置只保留最终 winner 的一个包含完整优化器状态的 checkpoint，删除非 winner checkpoint，不再持久保留 best。新增 scope manifest 和约 195.58 GB 的 full 峰值估算；不加入自动磁盘水位保护。科学参数、训练预算、八候选搜索和结果选择规则不变。
 
 ### v1.4 — 2026-10-05
 

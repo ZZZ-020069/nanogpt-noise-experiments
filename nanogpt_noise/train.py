@@ -163,8 +163,10 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after):
     indices = torch.load(artifacts/'windows.pt',map_location='cpu',weights_only=True)
     step, processed, best, evaluations = 0,0,float('inf'),[]
     latest = output/'latest.pt'
-    if latest.exists():
-        state = torch.load(latest,map_location=rt.device,weights_only=True)
+    final = output/'final.pt'
+    resume_checkpoint = latest if latest.exists() else (final if final.exists() else None)
+    if resume_checkpoint is not None:
+        state = torch.load(resume_checkpoint,map_location=rt.device,weights_only=True)
         if state['run_id']!=identity:
             raise ValueError('checkpoint belongs to a different candidate')
         model.load_state_dict(state['model'])
@@ -215,15 +217,12 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after):
                 raise RuntimeError('DDP replicas differ; check synchronization and noise RNG')
         item = dict(step=step,tokens=step*budget.step_tokens,**values)
         evaluations.append(item)
-        improved = values['val'] < best
         best = min(best,values['val'])
         if rt.rank==0:
             write_json(output/'evaluations.json',evaluations)
             if mode!='test':
                 print(f"eval step={step}/{target} train={values['train']:.6f} "
                       f"val={values['val']:.6f}", flush=True)
-            if improved:
-                save_checkpoint(output/'best.pt',snapshot())
             save_checkpoint(latest,snapshot())
         rt.barrier()
 
@@ -289,7 +288,12 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after):
                     save_checkpoint(latest,snapshot())
                 return status('infrastructure_failure',reason='interrupted; resume same candidate')
         if rt.rank==0:
-            save_checkpoint(output/'final.pt',snapshot())
+            # The final evaluation has already written the complete latest
+            # snapshot. A rename avoids a second full-checkpoint write.
+            if latest.exists():
+                os.replace(latest,final)
+            elif not final.exists():
+                raise RuntimeError('terminal checkpoint is missing')
         return status('completed',loss=evaluations[-1]['val'],
                       frozen_hash_final=tensor_hash(frozen),evaluations=evaluations)
     except NumericalFailure as exc:

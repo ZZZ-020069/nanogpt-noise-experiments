@@ -6,6 +6,7 @@ import torch.distributed as dist
 from .artifacts import read_json,write_json,lock
 from .protocol import grid,configuration
 from .search import propose,summarize
+from .storage import compact_steps,retain_winner_checkpoint
 from .train import run,Runtime
 
 
@@ -26,8 +27,12 @@ def run_node(job,data,artifacts,output,micro=4,runtime=None,test=False):
             records.append(dict(**candidate,status=result['status'],loss=result.get('loss'),
                                 lr=config['peak_lr'],candidate=index,tokens=result['tokens'],
                                 failure_field=result.get('field'),T_diverge=result.get('T_diverge')))
+            summary=summarize(records)
             if rt.rank==0:
-                write_json(output/'search.json',dict(job=job,mode='test' if test else 'formal',**summarize(records)))
+                write_json(output/'search.json',dict(job=job,mode='test' if test else 'formal',**summary))
+                compact_steps(output/f'candidate_{index:02d}')
+                winner=summary['winner']['candidate'] if summary['winner'] else None
+                retain_winner_checkpoint(output,winner)
             rt.barrier()
         return summarize(records)
 
