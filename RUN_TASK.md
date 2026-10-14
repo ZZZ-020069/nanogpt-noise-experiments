@@ -43,7 +43,7 @@ git lfs version
 
 如果命令不存在，先按服务器管理员提供的方法安装 Git LFS。不要把 GitHub 账号密码或个人访问令牌发给其他人。
 
-学长已创建 `/data/260010171/inputs/openwebtext_subset/`，因此直接把其父目录初始化为输入仓库工作区，不要再增加一层目录：
+因为已创建 `/data/260010171/inputs/openwebtext_subset/`，所以直接把其父目录初始化为输入仓库工作区，不要再增加一层目录：
 
 ```bash
 cd /data/260010171/inputs
