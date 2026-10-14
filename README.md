@@ -1,6 +1,6 @@
 # NanoGPT 噪声实验：四张 H100 运行与结果交接手册
 
-本仓库包含一套已经固定参数的 NanoGPT 训练任务。无需自行选择噪声、优化器或学习率，也不必根据中途结果修改训练设置；工作内容是准备规定的输入文件，在一台可见四张 H100 的 Linux 计算节点上执行命令，并将生成的结果完整交接到持久存储。
+本仓库包含一套已经固定参数的 NanoGPT 训练任务。无需自行选择噪声、优化器或学习率，也不必根据中途结果修改训练设置；工作内容是准备规定的输入文件，在 Linux 计算节点上执行统一入口脚本，并将生成的结果完整交接到持久存储。常规操作只需使用 `scripts/h100.sh`，其余命令主要用于故障排查。
 
 > **请先阅读 [简短任务说明](RUN_TASK.md)。** 本 README 用于需要进一步查询环境、存储、恢复、传输和故障处理细节时参考。
 
@@ -113,17 +113,19 @@ https://github.com/ZZZ-020069/nanogpt-noise-inputs.git
 ```text
 /data/260010171/
 ├── nanogpt-noise-experiments/        # 本代码仓库
-├── inputs/                           # 私有输入仓库的工作区
-│   ├── openwebtext_subset/           # DATA_DIR
-│   │   ├── train.bin                 # 2,000,000,000 bytes
-│   │   ├── val.bin                   #    20,000,000 bytes
-│   │   └── meta.json
-│   └── frozen-artifacts/             # ARTIFACT_DIR
-│       ├── initial.pt                # 统一未训练初始权重
-│       ├── windows.pt                # 固定训练与评估窗口
-│       └── identity.json             # 文件哈希与身份
 └── results/nanogpt-v1.5/             # RUN_BASE，在服务器上新建
     └── 当前scope/                    # RUN_DIR，例如 full/
+
+/data/260010189/
+└── inputs/                           # 私有输入仓库的工作区
+    ├── openwebtext_subset/           # DATA_DIR
+    │   ├── train.bin                 # 2,000,000,000 bytes
+    │   ├── val.bin                   #    20,000,000 bytes
+    │   └── meta.json
+    └── frozen-artifacts/             # ARTIFACT_DIR
+        ├── initial.pt                # 统一未训练初始权重
+        ├── windows.pt                # 固定训练与评估窗口
+        └── identity.json             # 文件哈希与身份
 ```
 
 ### 4.1 取得私有仓库权限并检查 Git LFS
@@ -140,10 +142,10 @@ git lfs version
 
 ### 4.2 首次下载六个输入文件
 
-学长已经创建 `/data/260010171/inputs/openwebtext_subset/` 时，不要再把仓库克隆成额外一层 `nanogpt-noise-inputs/`。应直接把 `/data/260010171/inputs` 初始化成输入仓库工作区，使最终路径与程序配置一致：
+学长已经创建 `/data/260010189/inputs/openwebtext_subset/` 时，不要再把仓库克隆成额外一层 `nanogpt-noise-inputs/`。应直接把 `/data/260010189/inputs` 初始化成输入仓库工作区，使最终路径与程序配置一致：
 
 ```bash
-cd /data/260010171/inputs
+cd /data/260010189/inputs
 git init
 git remote add origin https://github.com/ZZZ-020069/nanogpt-noise-inputs.git
 git lfs install
@@ -155,7 +157,7 @@ git lfs pull
 若该目录已经完成过上述初始化，则不要再次执行 `git init` 或 `git remote add`，改用：
 
 ```bash
-cd /data/260010171/inputs
+cd /data/260010189/inputs
 git pull --ff-only
 git lfs pull
 ```
@@ -169,7 +171,7 @@ git lfs pull
 检查提交、LFS 对象、文件大小和仓库自带的 SHA-256 清单：
 
 ```bash
-cd /data/260010171/inputs
+cd /data/260010189/inputs
 git rev-parse HEAD
 git lfs ls-files
 ls -lh openwebtext_subset/train.bin \
@@ -189,8 +191,8 @@ sha256sum -c SHA256SUMS
 
 ```bash
 cd /data/260010171/nanogpt-noise-experiments
-export DATA_DIR="/data/260010171/inputs/openwebtext_subset"
-export ARTIFACT_DIR="/data/260010171/inputs/frozen-artifacts"
+export DATA_DIR="/data/260010189/inputs/openwebtext_subset"
+export ARTIFACT_DIR="/data/260010189/inputs/frozen-artifacts"
 export RUN_BASE="/data/260010171/results/nanogpt-v1.5"
 mkdir -p "$RUN_BASE"
 
@@ -214,43 +216,40 @@ df -B1 "$RUN_BASE"
 
 ## 5. 先做不训练的检查
 
-验证数据和冻结产物：
+在仓库根目录执行统一检查：
 
 ```bash
-python -m nanogpt_noise.data \
-  --data "$DATA_DIR" --artifacts "$ARTIFACT_DIR" --verify
+bash scripts/h100.sh check
 ```
 
-命令应只输出以下 ID；不同 ID、缺文件或 `hash mismatch` 都表示输入不可用于正式运行：
+脚本会依次完成以下操作：
+
+1. 要求 Git 工作区没有未提交修改，并显示当前 commit；
+2. 检查固定路径下的六个输入文件；若输入目录含 `SHA256SUMS`，同时执行逐文件校验；
+3. 验证数据与冻结产物的项目身份；
+4. 运行完整 CPU 测试；
+5. 输出六个 scope 的存储估算，以及当前结果文件系统的 `df`、`du` 信息。
+
+输入身份必须为：
 
 ```text
 9cabd9c54c6d717354f8f6750715f9280c5502f0a85a9032806b9c7956cbd76e
 ```
 
-运行 CPU 测试：
+当前版本应显示 46 项测试并在末尾输出 `OK`。这一步验证协议和调度代码，不验证 H100；检查失败时不要启动训练。
+
+如果需要单独排查某一项，可手动执行底层命令：
 
 ```bash
+python -m nanogpt_noise.data \
+  --data /data/260010189/inputs/openwebtext_subset \
+  --artifacts /data/260010189/inputs/frozen-artifacts --verify
 python -m unittest discover -s tests -v
-```
-
-当前版本应显示 41 项测试并在末尾输出 `OK`。这一步验证协议和调度代码，不验证 H100；测试失败时不要启动训练。
-
-确认正式运行使用的代码版本并记录提交号：
-
-```bash
 git status --short
 git rev-parse HEAD
 ```
 
-第一条命令应无输出，表示工作区没有未提交修改。六个 scope 必须使用同一个提交；运行中不要执行 `git pull` 或编辑代码。
-
-查看六个 scope 的静态存储估算：
-
-```bash
-for SCOPE in full last1 last2 last3 last6 last12; do
-  python -m nanogpt_noise.scope estimate --scope "$SCOPE"
-done
-```
+六个 scope 必须使用同一个提交；正式 smoke 开始后不要执行 `git pull` 或编辑代码。脚本只显示磁盘信息，不会设置自动停机阈值，运行者仍需自行判断空间是否足够。
 
 ## 6. 用一张 H100 验收单候选
 
@@ -263,13 +262,13 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.is_bf16_sup
 
 前两个布尔值必须都为 `True`，GPU 名称应为实际分配的 H100。
 
-先申请只含一张 H100 的交互式计算会话，并确认当前进程只看见分配到的 GPU。然后为 smoke 单独设置目录：
+先申请只含一张 H100 的交互式计算会话，并确认当前进程只看见分配到的 GPU。进入仓库根目录后执行：
 
 ```bash
-export RUN_DIR="$RUN_BASE/smoke"
-mkdir -p "$RUN_DIR"
-bash scripts/run_4gpu.sh smoke
+bash scripts/h100.sh smoke
 ```
+
+`smoke` 会先重复第 5 节的全部检查，再运行单卡训练，因此不需要手工设置 `DATA_DIR`、`ARTIFACT_DIR`、`RUN_BASE` 或 `RUN_DIR`。
 
 默认 smoke 使用完整 124M 模型、正式 micro-batch 和梯度累积，但只执行 8 步：
 
@@ -284,13 +283,11 @@ tokens_per_step = 524,288
 验收状态：
 
 ```bash
-python -m json.tool "$RUN_DIR/smoke/1gpu/full-muon-node10/status.json"
-du -sh "$RUN_DIR/smoke/1gpu/full-muon-node10"
+bash scripts/h100.sh status
+python -m json.tool /data/260010171/results/nanogpt-v1.5/smoke/1gpu/full-muon-node10/status.json
 ```
 
-只有 `status: completed`、`mode: smoke`、`step: 8` 才算通过。OOM、`infrastructure_failure` 或 `numerical_failure` 均不通过。不要为了绕过 OOM 擅自修改 micro-batch、模型、噪声、梯度裁剪或正式预算。
-
-Smoke 通过后记录其日志和状态。正式运行 `full` 前不要让无关文件继续占用结果文件系统；如果需要移走或删除 smoke 输出，必须先确认目标确实是 `$RUN_BASE/smoke`，不能操作数据目录、冻结产物目录或仓库。
+只有终端显示 `SMOKE PASSED`，且状态为 `status: completed`、`mode: smoke`、`step: 8` 才算通过。脚本会把本次 smoke 的 commit 写入结果根目录；正式 scope 必须使用相同 commit。OOM、`infrastructure_failure` 或 `numerical_failure` 均不通过。不要为了绕过 OOM 擅自修改 micro-batch、模型、噪声、梯度裁剪或正式预算。
 
 ## 7. Scope、job 与存储预算
 
@@ -329,51 +326,44 @@ Smoke 通过后记录其日志和状态。正式运行 `full` 前不要让无关
 full -> last1 -> last2 -> last3 -> last6 -> last12
 ```
 
-### 8.1 选择 scope 和独立目录
+### 8.1 启动四卡任务池
+
+正式任务需要同一节点上的四张 H100。如果 Slurm 或其他调度器已经设置 `CUDA_VISIBLE_DEVICES`，不要覆盖。进入仓库根目录后执行：
 
 ```bash
-export SCOPE=full
-export RUN_DIR="$RUN_BASE/$SCOPE"
-mkdir -p "$RUN_DIR"
+bash scripts/h100.sh scope full
 ```
 
-目录名应与 scope 完全相同。启动器会写入 `scope_run.json`，并拒绝把另一个 scope 的 job 混入该目录。
+脚本自动使用 `/data/260010171/results/nanogpt-v1.5/full` 作为该 scope 的独立结果目录，并检查输入、smoke 状态与 commit 一致性。四个 worker 各占一张卡；某张卡完成一个 job 后，从当前 scope 的共享队列领取下一个 job。同一 job 的 8 个 LR 候选始终顺序执行，不会被拆到八张卡并行。
 
-### 8.2 启动四卡任务池
-
-正式任务需要同一节点上的四张 H100。如果 Slurm 或其他调度器已经设置 `CUDA_VISIBLE_DEVICES`，不要覆盖。只有在独立服务器上、且运行者已经获得四张指定 GPU 的使用权时，才按实际分配手动设置：
+只有在独立服务器上、且运行者已经获准使用 0、1、2、3 号卡时，才手动指定：
 
 ```bash
-export CUDA_VISIBLE_DEVICES=0,1,2,3
-bash scripts/run_4gpu.sh scope "$SCOPE"
+CUDA_VISIBLE_DEVICES=0,1,2,3 bash scripts/h100.sh scope full
 ```
-
-四个 worker 各占一张卡。某张卡完成一个 job 后，从当前 scope 的共享队列领取下一个 job。同一 job 的 8 个 LR 候选始终顺序执行，不会被拆到八张卡并行。
 
 建议在 `tmux` 中运行长任务：
 
 ```bash
 tmux new -s nanogpt-full
-# 在 tmux 内重新激活环境、设置变量，然后运行 scope 命令
+# 在 tmux 内重新激活环境，然后运行 h100.sh scope 命令
 ```
 
-### 8.3 查看进度
+### 8.2 查看进度
 
 ```bash
-tail -f "$RUN_DIR/launcher/job_0000.log"
-python -m json.tool "$RUN_DIR/job_0000/search.json"
-du -sh "$RUN_DIR"
-df -B1 "$RUN_DIR"
+bash scripts/h100.sh status full
+tail -f /data/260010171/results/nanogpt-v1.5/full/launcher/job_0000.log
 ```
 
-单个 job 完成的标志是 `search.json` 中 `complete: true`，且包含 8 个候选记录。
+`status` 只读取现有文件并显示任务、磁盘和目录大小，不会改变训练。单个 job 完成的标志是 `search.json` 中 `complete: true`，且包含 8 个候选记录。
 
-### 8.4 中断与恢复
+### 8.3 中断与恢复
 
-任务被抢占、SSH 断开或发生基础设施故障后，修复环境并使用完全相同的变量重新执行：
+任务被抢占、SSH 断开或发生基础设施故障后，修复环境并使用相同 commit 重新执行同一条命令：
 
 ```bash
-bash scripts/run_4gpu.sh scope "$SCOPE"
+bash scripts/h100.sh scope full
 ```
 
 完成候选会复用已有终态；未完成候选从自己的 `latest.pt` 恢复。基础设施故障必须恢复原候选，不能换一个 LR 顶替。不要修改 `metadata.json` 绕过身份检查。
@@ -384,7 +374,7 @@ bash scripts/run_4gpu.sh scope "$SCOPE"
 GPU_SLOT=0 bash scripts/run_4gpu.sh node 105
 ```
 
-普通正式运行不需要手工调用 `node` 或 `queue`，只使用 `scope` 入口。
+普通正式运行不需要手工调用 `run_4gpu.sh`、`node` 或 `queue`。这些都是维护者排查问题时使用的底层入口。
 
 ## 9. 完成、传出、校验与清空
 
@@ -395,8 +385,7 @@ GPU_SLOT=0 bash scripts/run_4gpu.sh node 105
 任务池正常结束后执行：
 
 ```bash
-python -m nanogpt_noise.scope finalize \
-  --runs "$RUN_DIR" --scope "$SCOPE"
+bash scripts/h100.sh finalize full
 ```
 
 该命令检查 140 个 job 是否全部完成、候选诊断是否已经压缩、checkpoint 是否只属于最终 winner，然后生成 `scope_manifest.json`。生成 manifest 后不要再向该目录写入；若检查失败，按报错恢复缺失任务，再重新 finalize。
@@ -522,8 +511,8 @@ Smoke、不完整任务和无有效 winner 的节点不会伪装成正式有限�
 仓库提供单节点四卡模板 [scripts/slurm.sh](scripts/slurm.sh)。必须在仓库根目录提交，并将所有占位符替换为学校实际分区、账号、H100 资源写法和绝对路径：
 
 ```bash
-export DATA_DIR="/data/260010171/inputs/openwebtext_subset"
-export ARTIFACT_DIR="/data/260010171/inputs/frozen-artifacts"
+export DATA_DIR="/data/260010189/inputs/openwebtext_subset"
+export ARTIFACT_DIR="/data/260010189/inputs/frozen-artifacts"
 export RUN_BASE="/data/260010171/results/nanogpt-v1.5"
 export SCOPE=full
 export RUN_DIR="$RUN_BASE/$SCOPE"
@@ -550,6 +539,9 @@ Slurm 作业号不是实验 job 编号。
 | 现象 | 处理 |
 |---|---|
 | `No module named nanogpt_noise` | 在仓库根目录激活正确环境并运行 `python -m pip install -e '.[plots]'` |
+| `code worktree is not clean` | 不要带着本地修改运行正式实验；保存必要内容后恢复到约定 commit 的干净工作区 |
+| `smoke commit marker is missing` | 先在一张 H100 上运行 `bash scripts/h100.sh smoke`，不要跳过实机验收 |
+| smoke commit 与当前 commit 不同 | 切回通过 smoke 的 commit，或在当前 commit 重新执行 smoke；不要混用两个代码版本 |
 | `CUDA unavailable` | 确认进入 GPU 节点、安装 CUDA 版 PyTorch，检查驱动兼容性 |
 | 输入校验 ID 不同或 `hash mismatch` | 停止运行，重新取得项目提供方给出的完整数据和冻结产物；不要自行重建 |
 | `df -B1` 显示可用空间不足 200000000000 bytes | 不要启动 `full`；改用容量更大的项目盘或先清理已经校验交接的旧 scope |
@@ -566,7 +558,8 @@ Slurm 作业号不是实验 job 编号。
 
 本 README 是运行与结果交接手册。仓库内的 [实验设计发布快照](docs/nanogpt_experiment_design.md) 说明固定的科学参数；运行者不需要访问仓库之外的文档，也不应自行改动协议。正式结果由 Git commit、候选 metadata、输入身份和 scope manifest 共同标识。
 
-- [scripts/run_4gpu.sh](scripts/run_4gpu.sh)：单卡 smoke、单 job 和逐 scope 四卡入口；
+- [scripts/h100.sh](scripts/h100.sh)：运行者的统一入口，提供 `check`、`smoke`、`scope`、`status` 和 `finalize`；
+- [scripts/run_4gpu.sh](scripts/run_4gpu.sh)：由统一入口调用的底层 GPU 启动器，仅供维护和排障；
 - `nanogpt_noise/pool.py`：四个独立单卡 worker 的动态调度；
 - `nanogpt_noise/node.py`：一个 job 内 8 个 LR 候选的顺序搜索；
 - `nanogpt_noise/train.py`：单候选训练、状态与恢复；
@@ -574,5 +567,7 @@ Slurm 作业号不是实验 job 编号。
 - `nanogpt_noise/scope.py`：scope 隔离、估算、finalize、verify 和受保护清理；
 - `nanogpt_noise/analyze.py`：跨多个已下载 scope 的统一汇总；
 - [实现验证记录](docs/VALIDATION.md)：已完成检查和目标硬件待验项目。
+
+统一入口不会登录服务器、申请 GPU、激活 Conda/虚拟环境、安装 CUDA 版 PyTorch、执行 `git pull`、传出结果、删除 scope 或因磁盘空间不足自动停止训练。这些操作跨越了不同资源会话或具有破坏性，必须由运行者按本文明确完成。
 
 模型结构参考 nanoGPT，并保留[原 MIT 声明](third_party/nanogpt-LICENSE)。本仓库不依赖 WandB。底层仍保留 DDP 回归测试，但正式 H100 路径是一张卡运行一个独立任务。
