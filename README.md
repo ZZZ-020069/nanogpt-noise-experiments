@@ -26,23 +26,23 @@
 
 开始操作前，应确认已经取得：
 
-1. 本 GitHub 仓库的读取权限；
-2. 项目提供方交付的完整数据目录，内含 `train.bin`、`val.bin`、`meta.json`；
-3. 项目提供方交付的完整冻结产物目录，内含 `initial.pt`、`windows.pt`、`identity.json`；
+1. 本代码仓库的读取权限；
+2. 私有输入仓库 `ZZZ-020069/nanogpt-noise-inputs` 的 Collaborator 邀请，并已使用运行者自己的 GitHub 账号接受；
+3. 服务器上的 Git LFS；输入仓库内含 `train.bin`、`val.bin`、`meta.json`、`initial.pt`、`windows.pt`、`identity.json`；
 4. 一台 Linux 计算节点上的四张 H100，四张卡必须能被同一个作业同时看见并支持 BF16；
 5. Python 3.11 或更高版本，以及与服务器驱动兼容的 CUDA 版 PyTorch；
 6. `full` 运行开始前至少 `200000000000` bytes 的可用文件系统空间；
 7. 一个独立于临时算力盘的持久结果接收位置，以及从计算服务器向该位置传输文件的方法；
 8. 若使用 Slurm，学校实际提供的 partition、account、GPU 资源写法和作业时限。
 
-输入目录缺文件或校验不通过时应停止并联系项目提供方，不必自行重新生成、替换或修改数据与冻结产物。学校集群参数不确定时需向集群管理员确认。
+输入仓库无权访问、Git LFS 不可用、输入目录缺文件或校验不通过时应停止并联系项目提供方，不必自行重新生成、替换或修改数据与冻结产物。学校集群参数不确定时需向集群管理员确认。
 
 运行中若出现 OOM、CUDA、文件系统或调度器错误，应保存完整日志并恢复原任务。不要通过改学习率、batch、训练步数、模型、噪声、梯度裁剪、优化器或代码来规避错误。
 
 完整操作顺序如下：
 
 1. 克隆代码，准备 Python/CUDA 环境；
-2. 将数据和冻结产物传入服务器，在服务器创建空的结果根目录；
+2. 从私有输入仓库将数据和冻结产物下载到服务器的固定输入目录，并完成 LFS、SHA-256 与项目身份校验；
 3. 运行输入校验和 CPU 测试；
 4. 申请一张 H100，完成 8 步 smoke test；
 5. 申请同一节点上的四张 H100，完整运行当前 scope 的 140 个 job；
@@ -63,8 +63,9 @@ full -> last1 -> last2 -> last3 -> last6 -> last12
 在 Linux 计算服务器执行：
 
 ```bash
+cd /data/260010171
 git clone https://github.com/ZZZ-020069/nanogpt-noise-experiments.git
-cd nanogpt-noise-experiments
+cd /data/260010171/nanogpt-noise-experiments
 ```
 
 如果仓库为私有状态，运行者需要先接受仓库管理员发送的 GitHub Collaborator 邀请，再使用自己的 GitHub 账号认证。遇到 `Repository not found` 或权限错误时先确认邀请和登录状态；不要共享密码或个人访问令牌。
@@ -92,38 +93,105 @@ PyTorch 必须带 CUDA 支持，`torch.version.cuda` 不能为 `None`。登录�
 
 ## 4. 准备数据、冻结产物与目录
 
-GitHub 不包含大型数据文件。这里要区分“需要提前传到服务器的输入”和“在服务器上新建的输出目录”：
+大型输入不放在本代码仓库，而是放在独立的私有 Git LFS 仓库：
+
+```text
+https://github.com/ZZZ-020069/nanogpt-noise-inputs.git
+```
+
+这里要区分“从输入仓库下载到服务器的文件”和“在服务器上新建的输出目录”：
 
 | 变量 | 内容 | 是否需要提前传输 |
 |---|---|---|
-| `DATA_DIR` | `train.bin`、`val.bin` 和 `meta.json` | **需要**。从项目提供方取得完整目录并传到服务器 |
-| `ARTIFACT_DIR` | `initial.pt`、`windows.pt` 和 `identity.json` | **需要**。从项目提供方取得完整目录并传到服务器；不要自行生成替代文件 |
+| `DATA_DIR` | `train.bin`、`val.bin` 和 `meta.json` | **需要**。从私有输入仓库通过 Git LFS 下载 |
+| `ARTIFACT_DIR` | `initial.pt`、`windows.pt` 和 `identity.json` | **需要**。从同一私有输入仓库通过 Git LFS 下载；不要自行生成替代文件 |
 | `RUN_BASE` | 六个 scope 输出目录的父目录 | **不需要上传**。在服务器的大容量计算盘或项目盘上创建一个空目录即可 |
 | `RUN_DIR` | 当前一个 scope 的实际输出目录，例如 `RUN_BASE/full` | **不需要提前上传**。程序运行时自动产生内容；scope 完成后再传到约定的持久结果存储 |
 
-因此，结果根目录不是需要提前接收的数据包，也不是仓库的一部分；它只是运行者在服务器上选择的一个可写位置。优先放在容量足够的 `/scratch/...` 或学校项目盘中，不要在未确认配额时放进个人 home 目录。服务器建议采用以下结构：
+结果根目录不是需要提前接收的数据包，也不是仓库的一部分；它只是运行者在服务器上选择的一个可写位置。不要在未确认配额时放进个人 home 目录。本项目当前服务器采用以下结构：
 
 ```text
-数据目录/                              -> DATA_DIR
-├── train.bin                         # 2,000,000,000 bytes
-├── val.bin                           #    20,000,000 bytes
-└── meta.json
-
-冻结产物目录/                          -> ARTIFACT_DIR
-├── initial.pt                        # 统一未训练初始权重
-├── windows.pt                        # 固定训练与评估窗口
-└── identity.json                     # 文件哈希与身份
-
-结果根目录/                           -> RUN_BASE，在服务器上新建
-└── 当前scope/                        -> RUN_DIR，例如 full/
+/data/260010171/
+├── nanogpt-noise-experiments/        # 本代码仓库
+├── inputs/                           # 私有输入仓库的工作区
+│   ├── openwebtext_subset/           # DATA_DIR
+│   │   ├── train.bin                 # 2,000,000,000 bytes
+│   │   ├── val.bin                   #    20,000,000 bytes
+│   │   └── meta.json
+│   └── frozen-artifacts/             # ARTIFACT_DIR
+│       ├── initial.pt                # 统一未训练初始权重
+│       ├── windows.pt                # 固定训练与评估窗口
+│       └── identity.json             # 文件哈希与身份
+└── results/nanogpt-v1.5/             # RUN_BASE，在服务器上新建
+    └── 当前scope/                    # RUN_DIR，例如 full/
 ```
 
-设置绝对路径。尖括号内容都是占位符，不能原样复制。下面示例中，前两个目录需要提前传好内容；`RUN_BASE` 只需由运行者在服务器上创建。`RUN_DIR` 在正式运行时必须指向一个具体 scope：
+### 4.1 取得私有仓库权限并检查 Git LFS
+
+项目仓库所有者先在输入仓库的 `Settings -> Collaborators` 中添加运行者的 GitHub 用户名；运行者必须使用自己的账号接受邀请。不要共享 GitHub 密码或个人访问令牌。服务器使用 HTTPS 时应按学校允许的方式配置 GitHub CLI、credential helper 或个人访问令牌；GitHub 的密码提示框不接受账号登录密码。
+
+在服务器检查 Git LFS：
 
 ```bash
-export DATA_DIR="/scratch/<项目目录>/inputs/openwebtext_subset"
-export ARTIFACT_DIR="/scratch/<项目目录>/inputs/frozen-artifacts"
-export RUN_BASE="/scratch/<项目目录>/results/nanogpt-v1.5"
+git lfs version
+```
+
+如果命令不存在，先使用服务器的软件模块、系统包管理器或管理员提供的方法安装 Git LFS，不要继续执行普通 `git fetch` 来代替 LFS 下载。
+
+### 4.2 首次下载六个输入文件
+
+学长已经创建 `/data/260010171/inputs/openwebtext_subset/` 时，不要再把仓库克隆成额外一层 `nanogpt-noise-inputs/`。应直接把 `/data/260010171/inputs` 初始化成输入仓库工作区，使最终路径与程序配置一致：
+
+```bash
+cd /data/260010171/inputs
+git init
+git remote add origin https://github.com/ZZZ-020069/nanogpt-noise-inputs.git
+git lfs install
+git fetch origin main
+git checkout -b main --track origin/main
+git lfs pull
+```
+
+若该目录已经完成过上述初始化，则不要再次执行 `git init` 或 `git remote add`，改用：
+
+```bash
+cd /data/260010171/inputs
+git pull --ff-only
+git lfs pull
+```
+
+当前输入交付提交为：
+
+```text
+1b3643ac44ff2b76ed471cc130a04c2c9c52fb01
+```
+
+检查提交、LFS 对象、文件大小和仓库自带的 SHA-256 清单：
+
+```bash
+cd /data/260010171/inputs
+git rev-parse HEAD
+git lfs ls-files
+ls -lh openwebtext_subset/train.bin \
+       openwebtext_subset/val.bin \
+       openwebtext_subset/meta.json \
+       frozen-artifacts/initial.pt \
+       frozen-artifacts/windows.pt \
+       frozen-artifacts/identity.json
+sha256sum -c SHA256SUMS
+```
+
+`git lfs ls-files` 应列出四个大文件，`sha256sum` 的六项均必须为 `OK`。很小且以 `version https://git-lfs.github.com/spec/v1` 开头的 `.bin` 或 `.pt` 是未下载的 LFS 指针，不能用于实验。
+
+### 4.3 设置实验目录
+
+设置绝对路径；`DATA_DIR` 与 `ARTIFACT_DIR` 指向刚下载的两个子目录，`RUN_BASE` 是服务器上的结果根目录：
+
+```bash
+cd /data/260010171/nanogpt-noise-experiments
+export DATA_DIR="/data/260010171/inputs/openwebtext_subset"
+export ARTIFACT_DIR="/data/260010171/inputs/frozen-artifacts"
+export RUN_BASE="/data/260010171/results/nanogpt-v1.5"
 mkdir -p "$RUN_BASE"
 
 ls -lh "$DATA_DIR/train.bin" "$DATA_DIR/val.bin" "$DATA_DIR/meta.json"
@@ -134,13 +202,13 @@ df -B1 "$RUN_BASE"
 数据传输方向可以概括为：
 
 ```text
-实验开始前：项目提供方的 DATA_DIR、ARTIFACT_DIR  ->  H100 服务器
+实验开始前：私有输入仓库  ->  H100 服务器的 DATA_DIR、ARTIFACT_DIR
 实验运行时：H100 服务器在 RUN_DIR 中生成结果
 每个 scope 完成后：服务器 RUN_DIR  ->  约定的持久结果接收位置
 接收端校验通过后：清空服务器上的这个 RUN_DIR，再运行下一个 scope
 ```
 
-`identity.json` 描述了冻结产物身份；下一节的校验命令会同时检查数据和冻结产物的逐文件哈希，并输出预期 ID。
+`SHA256SUMS` 检查下载传输是否完整；`identity.json` 描述冻结产物身份。下一节的项目级校验还会同时检查数据和冻结产物的逐文件哈希，并输出预期 ID。两层校验都必须通过。
 
 在开始 `full` 前，结果所在文件系统的可用空间应至少为 `200000000000` bytes，并且不能混放上一 scope 的结果。
 
@@ -454,9 +522,9 @@ Smoke、不完整任务和无有效 winner 的节点不会伪装成正式有限�
 仓库提供单节点四卡模板 [scripts/slurm.sh](scripts/slurm.sh)。必须在仓库根目录提交，并将所有占位符替换为学校实际分区、账号、H100 资源写法和绝对路径：
 
 ```bash
-export DATA_DIR="/scratch/<项目目录>/inputs/openwebtext_subset"
-export ARTIFACT_DIR="/scratch/<项目目录>/inputs/frozen-artifacts"
-export RUN_BASE="/scratch/<项目目录>/results/nanogpt-v1.5"
+export DATA_DIR="/data/260010171/inputs/openwebtext_subset"
+export ARTIFACT_DIR="/data/260010171/inputs/frozen-artifacts"
+export RUN_BASE="/data/260010171/results/nanogpt-v1.5"
 export SCOPE=full
 export RUN_DIR="$RUN_BASE/$SCOPE"
 mkdir -p "$RUN_DIR"

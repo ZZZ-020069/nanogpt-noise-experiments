@@ -8,19 +8,19 @@
 
 ## 1. 开始前请向项目提供方取得
 
-1. 本仓库的 GitHub 访问权限；
-2. 数据目录，包含 `train.bin`、`val.bin`、`meta.json`；
-3. 冻结产物目录，包含 `initial.pt`、`windows.pt`、`identity.json`；
-4. 最终结果应传到哪里，以及对应的传输方式；
-5. 学校集群实际使用的 Slurm partition、account 和 H100 资源写法。
+1. 本代码仓库的 GitHub 访问权限；
+2. 私有输入仓库 `ZZZ-020069/nanogpt-noise-inputs` 的 Collaborator 邀请，并使用自己的 GitHub 账号接受；
+3. 最终结果应传到哪里，以及对应的传输方式；
+4. 学校集群实际使用的 Slurm partition、account 和 H100 资源写法。
 
-GitHub 仓库不包含上述大型输入文件。如果文件不全，请先联系项目提供方，不要自行重新生成。
+六个固定输入文件通过私有输入仓库的 Git LFS 交付。如果无权访问、Git LFS 不可用或文件校验失败，请先联系项目提供方，不要自行重新生成。
 
 ## 2. 下载代码并安装
 
 ```bash
+cd /data/260010171
 git clone https://github.com/ZZZ-020069/nanogpt-noise-experiments.git
-cd nanogpt-noise-experiments
+cd /data/260010171/nanogpt-noise-experiments
 
 # 先按学校服务器的方式进入 Python 3.11+、CUDA PyTorch 环境
 python -m pip install -e '.[plots]'
@@ -33,22 +33,82 @@ git status --short       # 正常应无输出
 git rev-parse HEAD
 ```
 
-## 3. 设置三个目录
+## 3. 下载固定输入文件
 
-下面路径只是示例，必须替换为服务器上的真实绝对路径：
+先确认服务器安装了 Git LFS：
 
 ```bash
-export DATA_DIR="/scratch/<项目目录>/inputs/openwebtext_subset"
-export ARTIFACT_DIR="/scratch/<项目目录>/inputs/frozen-artifacts"
-export RUN_BASE="/scratch/<项目目录>/results/nanogpt-v1.5"
+git lfs version
+```
+
+如果命令不存在，先按服务器管理员提供的方法安装 Git LFS。不要把 GitHub 账号密码或个人访问令牌发给其他人。
+
+学长已创建 `/data/260010171/inputs/openwebtext_subset/`，因此直接把其父目录初始化为输入仓库工作区，不要再增加一层目录：
+
+```bash
+cd /data/260010171/inputs
+git init
+git remote add origin https://github.com/ZZZ-020069/nanogpt-noise-inputs.git
+git lfs install
+git fetch origin main
+git checkout -b main --track origin/main
+git lfs pull
+```
+
+私有仓库认证必须使用运行者自己的 GitHub 账号；GitHub 的密码提示不接受账号登录密码。若该目录以前已经初始化完成，则执行以下更新命令，不要重复运行 `git init` 和 `git remote add`：
+
+```bash
+cd /data/260010171/inputs
+git pull --ff-only
+git lfs pull
+```
+
+下载后执行：
+
+```bash
+cd /data/260010171/inputs
+git rev-parse HEAD
+git lfs ls-files
+sha256sum -c SHA256SUMS
+```
+
+当前输入提交应为：
+
+```text
+1b3643ac44ff2b76ed471cc130a04c2c9c52fb01
+```
+
+`git lfs ls-files` 应列出四个大文件，`sha256sum` 的六项均须为 `OK`。最终目录必须为：
+
+```text
+/data/260010171/inputs/
+├── openwebtext_subset/
+│   ├── train.bin
+│   ├── val.bin
+│   └── meta.json
+└── frozen-artifacts/
+    ├── initial.pt
+    ├── windows.pt
+    └── identity.json
+```
+
+## 4. 设置三个目录
+
+本项目当前服务器使用以下绝对路径：
+
+```bash
+cd /data/260010171/nanogpt-noise-experiments
+export DATA_DIR="/data/260010171/inputs/openwebtext_subset"
+export ARTIFACT_DIR="/data/260010171/inputs/frozen-artifacts"
+export RUN_BASE="/data/260010171/results/nanogpt-v1.5"
 mkdir -p "$RUN_BASE"
 ```
 
-- `DATA_DIR` 和 `ARTIFACT_DIR` 是项目提供方传来的输入；
+- `DATA_DIR` 和 `ARTIFACT_DIR` 是刚从私有输入仓库下载并校验的输入；
 - `RUN_BASE` 是你在服务器大容量磁盘上新建的空结果目录；
 - 不要把结果写到容量未经确认的个人 home 目录。
 
-## 4. 先校验输入和代码
+## 5. 先校验输入和代码
 
 ```bash
 python -m nanogpt_noise.data \
@@ -65,7 +125,7 @@ python -m unittest discover -s tests -v
 
 测试应为 41 项并以 `OK` 结束。任一检查失败都不要开始正式训练。
 
-## 5. 先用一张 H100 做 smoke test
+## 6. 先用一张 H100 做 smoke test
 
 在只分配一张 H100 的计算节点上执行：
 
@@ -88,7 +148,7 @@ step: 8
 
 Smoke test 只是检查 H100 能否承载任务，不是正式实验结果。
 
-## 6. 四张 H100 每次只运行一个 scope
+## 7. 四张 H100 每次只运行一个 scope
 
 六个 scope 按下面顺序分别运行：
 
@@ -119,7 +179,7 @@ bash scripts/run_4gpu.sh scope "$SCOPE"
 
 不要通过修改学习率、batch、训练步数、噪声、模型或梯度裁剪来处理错误。
 
-## 7. 查看进度
+## 8. 查看进度
 
 ```bash
 tail -f "$RUN_DIR/launcher/job_0000.log"
@@ -129,7 +189,7 @@ df -B1 "$RUN_DIR"
 
 `full` 开始前至少应有 `200000000000` bytes 可用空间。单个 job 的 `search.json` 显示 `complete: true` 且包含 8 个候选，才表示该 job 完成。
 
-## 8. 每个 scope 完成后的操作
+## 9. 每个 scope 完成后的操作
 
 先在服务器封存并生成文件校验清单：
 
@@ -144,7 +204,7 @@ python -m nanogpt_noise.scope finalize \
 2. 不要在服务器上另建同体积的 tar/zip；
 3. 在接收端按照 [README 的校验步骤](README.md#93-在结果接收端校验副本)运行 `nanogpt_noise.scope verify`；
 4. 只有接收端校验成功后，才能清理服务器上的当前 scope；
-5. 再把 `SCOPE` 改成下一个值，重复第 6–8 节。
+5. 再把 `SCOPE` 改成下一个值，重复第 7–9 节。
 
 清理命令具有删除作用，必须在接收端验证成功后才运行：
 
@@ -153,7 +213,7 @@ python -m nanogpt_noise.scope cleanup \
   --runs "$RUN_DIR" --scope "$SCOPE" --confirm "DELETE-$SCOPE"
 ```
 
-## 9. 最终需要交付
+## 10. 最终需要交付
 
 - 六个分别通过校验的结果目录：`full`、`last1`、`last2`、`last3`、`last6`、`last12`；
 - 每个目录内的 `scope_manifest.json`；
