@@ -1,8 +1,20 @@
 # NanoGPT 噪声实验：四张 H100 运行与结果交接手册
 
-本仓库包含一套已经固定参数的 NanoGPT 训练任务。无需自行选择噪声、优化器或学习率，也不必根据中途结果修改训练设置；工作内容是准备规定的输入文件，在 Linux 计算节点上执行统一入口脚本，并将生成的结果完整交接到持久存储。常规操作只需使用 `scripts/h100.sh`，其余命令主要用于故障排查。
+本仓库包含一套已经固定参数的 NanoGPT 训练任务。无需自行选择噪声、优化器或学习率，也不必根据中途结果修改训练设置；工作内容是准备规定的输入文件，在 Linux 计算节点上执行脚本，并将生成的结果完整交接到持久存储。
 
 > **请先阅读 [简短任务说明](RUN_TASK.md)。** 本 README 用于需要进一步查询环境、存储、恢复、传输和故障处理细节时参考。
+
+正常运行只有两个公开入口：
+
+```bash
+# 一张 H100：自动检查并完成 smoke
+bash scripts/run_smoke.sh
+
+# 四张 H100：运行或恢复 full 的全部任务，成功后自动 finalize
+bash scripts/run_formal.sh
+```
+
+第二条命令默认运行 `full`；其他 scope 使用 `bash scripts/run_formal.sh last1` 等。`scripts/h100.sh` 的各子命令是维护和排障工具，不是学长需要逐项执行的正常流程。
 
 正式运行采用四个独立单卡进程：每张 H100 同时处理一个不同任务，不采用四卡 DistributedDataParallel（DDP）共同训练一个候选。由于结果盘按约 200 GB 规划，六个训练范围必须逐个运行；完成一个范围后，先封存、传出并校验，再清空服务器副本并运行下一个范围。程序不会自动监控剩余磁盘空间。
 
@@ -214,9 +226,9 @@ df -B1 "$RUN_BASE"
 
 在开始 `full` 前，结果所在文件系统的可用空间应至少为 `200000000000` bytes，并且不能混放上一 scope 的结果。
 
-## 5. 先做不训练的检查
+## 5. 可选：单独执行不训练的检查
 
-在仓库根目录执行统一检查：
+通常无需单独执行本节，因为 `run_smoke.sh` 会自动完成全部检查。维护者需要在申请 GPU 前排查输入或代码时，可在仓库根目录执行：
 
 ```bash
 bash scripts/h100.sh check
@@ -236,7 +248,7 @@ bash scripts/h100.sh check
 9cabd9c54c6d717354f8f6750715f9280c5502f0a85a9032806b9c7956cbd76e
 ```
 
-当前版本应显示 46 项测试并在末尾输出 `OK`。这一步验证协议和调度代码，不验证 H100；检查失败时不要启动训练。
+当前版本应显示 48 项测试并在末尾输出 `OK`。这一步验证协议和调度代码，不验证 H100；检查失败时不要启动训练。
 
 如果需要单独排查某一项，可手动执行底层命令：
 
@@ -262,13 +274,13 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.is_bf16_sup
 
 前两个布尔值必须都为 `True`，GPU 名称应为实际分配的 H100。
 
-先申请只含一张 H100 的交互式计算会话，并确认当前进程只看见分配到的 GPU。进入仓库根目录后执行：
+先申请只含一张 H100 的交互式计算会话，并确认当前进程只看见分配到的 GPU。进入仓库根目录后执行唯一一条 smoke 命令：
 
 ```bash
-bash scripts/h100.sh smoke
+bash scripts/run_smoke.sh
 ```
 
-`smoke` 会先重复第 5 节的全部检查，再运行单卡训练，因此不需要手工设置 `DATA_DIR`、`ARTIFACT_DIR`、`RUN_BASE` 或 `RUN_DIR`。
+脚本会先完成第 5 节的全部检查，再运行单卡训练，因此不需要手工设置 `DATA_DIR`、`ARTIFACT_DIR`、`RUN_BASE` 或 `RUN_DIR`，也不需要另外运行 `check`。
 
 默认 smoke 使用完整 124M 模型、正式 micro-batch 和梯度累积，但只执行 8 步：
 
@@ -318,7 +330,7 @@ python -m json.tool /data/260010171/results/nanogpt-v1.5/smoke/1gpu/full-muon-no
 
 ## 8. 正式运行一个 scope
 
-以下以 `full` 为例。其他 scope 只替换 `SCOPE`。
+以下以 `full` 为例。其他 scope 作为脚本的唯一参数，例如 `bash scripts/run_formal.sh last1`。
 
 六个 scope 建议按下列顺序逐个完成；不要跳到 `queue 0 839`，也不要并行启动两个 scope：
 
@@ -328,25 +340,25 @@ full -> last1 -> last2 -> last3 -> last6 -> last12
 
 ### 8.1 启动四卡任务池
 
-正式任务需要同一节点上的四张 H100。如果 Slurm 或其他调度器已经设置 `CUDA_VISIBLE_DEVICES`，不要覆盖。进入仓库根目录后执行：
+正式任务需要同一节点上的四张 H100。如果 Slurm 或其他调度器已经设置 `CUDA_VISIBLE_DEVICES`，不要覆盖。进入仓库根目录后执行一条正式命令：
 
 ```bash
-bash scripts/h100.sh scope full
+bash scripts/run_formal.sh
 ```
 
-脚本自动使用 `/data/260010171/results/nanogpt-v1.5/full` 作为该 scope 的独立结果目录，并检查输入、smoke 状态与 commit 一致性。四个 worker 各占一张卡；某张卡完成一个 job 后，从当前 scope 的共享队列领取下一个 job。同一 job 的 8 个 LR 候选始终顺序执行，不会被拆到八张卡并行。
+不提供参数时默认运行 `full`。脚本自动使用 `/data/260010171/results/nanogpt-v1.5/full` 作为独立结果目录，检查输入、smoke 状态与 commit 一致性，运行或恢复全部 140 个 job，并在任务池成功结束后自动执行 `finalize`。四个 worker 各占一张卡；某张卡完成一个 job 后，从当前 scope 的共享队列领取下一个 job。同一 job 的 8 个 LR 候选始终顺序执行，不会被拆到八张卡并行。
 
 只有在独立服务器上、且运行者已经获准使用 0、1、2、3 号卡时，才手动指定：
 
 ```bash
-CUDA_VISIBLE_DEVICES=0,1,2,3 bash scripts/h100.sh scope full
+CUDA_VISIBLE_DEVICES=0,1,2,3 bash scripts/run_formal.sh
 ```
 
 建议在 `tmux` 中运行长任务：
 
 ```bash
 tmux new -s nanogpt-full
-# 在 tmux 内重新激活环境，然后运行 h100.sh scope 命令
+# 在 tmux 内重新激活环境，然后运行 run_formal.sh
 ```
 
 ### 8.2 查看进度
@@ -363,7 +375,7 @@ tail -f /data/260010171/results/nanogpt-v1.5/full/launcher/job_0000.log
 任务被抢占、SSH 断开或发生基础设施故障后，修复环境并使用相同 commit 重新执行同一条命令：
 
 ```bash
-bash scripts/h100.sh scope full
+bash scripts/run_formal.sh
 ```
 
 完成候选会复用已有终态；未完成候选从自己的 `latest.pt` 恢复。基础设施故障必须恢复原候选，不能换一个 LR 顶替。不要修改 `metadata.json` 绕过身份检查。
@@ -382,13 +394,13 @@ GPU_SLOT=0 bash scripts/run_4gpu.sh node 105
 
 ### 9.1 在服务器封存 scope
 
-任务池正常结束后执行：
+`run_formal.sh` 在任务池正常结束后已经自动执行以下封存步骤，正常情况下不需要再次运行命令。只有维护者确认任务池已经完成、但自动封存阶段单独失败时，才手动执行：
 
 ```bash
 bash scripts/h100.sh finalize full
 ```
 
-该命令检查 140 个 job 是否全部完成、候选诊断是否已经压缩、checkpoint 是否只属于最终 winner，然后生成 `scope_manifest.json`。生成 manifest 后不要再向该目录写入；若检查失败，按报错恢复缺失任务，再重新 finalize。
+封存会检查 140 个 job 是否全部完成、候选诊断是否已经压缩、checkpoint 是否只属于最终 winner，然后生成 `scope_manifest.json`。看到 `FORMAL SCOPE FINALIZED` 后不要再向该目录写入；若检查失败，按报错恢复缺失任务，再重新运行 `run_formal.sh`。
 
 ### 9.2 直接传到持久结果存储
 
@@ -540,7 +552,7 @@ Slurm 作业号不是实验 job 编号。
 |---|---|
 | `No module named nanogpt_noise` | 在仓库根目录激活正确环境并运行 `python -m pip install -e '.[plots]'` |
 | `code worktree is not clean` | 不要带着本地修改运行正式实验；保存必要内容后恢复到约定 commit 的干净工作区 |
-| `smoke commit marker is missing` | 先在一张 H100 上运行 `bash scripts/h100.sh smoke`，不要跳过实机验收 |
+| `smoke commit marker is missing` | 先在一张 H100 上运行 `bash scripts/run_smoke.sh`，不要跳过实机验收 |
 | smoke commit 与当前 commit 不同 | 切回通过 smoke 的 commit，或在当前 commit 重新执行 smoke；不要混用两个代码版本 |
 | `CUDA unavailable` | 确认进入 GPU 节点、安装 CUDA 版 PyTorch，检查驱动兼容性 |
 | 输入校验 ID 不同或 `hash mismatch` | 停止运行，重新取得项目提供方给出的完整数据和冻结产物；不要自行重建 |
@@ -558,7 +570,9 @@ Slurm 作业号不是实验 job 编号。
 
 本 README 是运行与结果交接手册。仓库内的 [实验设计发布快照](docs/nanogpt_experiment_design.md) 说明固定的科学参数；运行者不需要访问仓库之外的文档，也不应自行改动协议。正式结果由 Git commit、候选 metadata、输入身份和 scope manifest 共同标识。
 
-- [scripts/h100.sh](scripts/h100.sh)：运行者的统一入口，提供 `check`、`smoke`、`scope`、`status` 和 `finalize`；
+- [scripts/run_smoke.sh](scripts/run_smoke.sh)：学长的一键单卡 smoke 入口；
+- [scripts/run_formal.sh](scripts/run_formal.sh)：学长的一键四卡正式 scope 入口，成功后自动 finalize；
+- [scripts/h100.sh](scripts/h100.sh)：供维护和排障使用的生命周期工具；
 - [scripts/run_4gpu.sh](scripts/run_4gpu.sh)：由统一入口调用的底层 GPU 启动器，仅供维护和排障；
 - `nanogpt_noise/pool.py`：四个独立单卡 worker 的动态调度；
 - `nanogpt_noise/node.py`：一个 job 内 8 个 LR 候选的顺序搜索；
@@ -568,6 +582,6 @@ Slurm 作业号不是实验 job 编号。
 - `nanogpt_noise/analyze.py`：跨多个已下载 scope 的统一汇总；
 - [实现验证记录](docs/VALIDATION.md)：已完成检查和目标硬件待验项目。
 
-统一入口不会登录服务器、申请 GPU、激活 Conda/虚拟环境、安装 CUDA 版 PyTorch、执行 `git pull`、传出结果、删除 scope 或因磁盘空间不足自动停止训练。这些操作跨越了不同资源会话或具有破坏性，必须由运行者按本文明确完成。
+两个公开入口不会登录服务器、申请 GPU、激活 Conda/虚拟环境、安装 CUDA 版 PyTorch、执行 `git pull`、传出结果、删除 scope 或因磁盘空间不足自动停止训练。这些操作跨越了不同资源会话或具有破坏性，必须由运行者按本文明确完成。
 
 模型结构参考 nanoGPT，并保留[原 MIT 声明](third_party/nanogpt-LICENSE)。本仓库不依赖 WandB。底层仍保留 DDP 回归测试，但正式 H100 路径是一张卡运行一个独立任务。

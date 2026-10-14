@@ -49,6 +49,7 @@ class OperatorScriptTests(unittest.TestCase):
                 '#!/usr/bin/env bash\n'
                 'printf "PY=<%s>\\n" "$@" >&2\n'
                 f'if [[ "$*" == *nanogpt_noise.data* ]]; then echo "{EXPECTED_ID}"; exit 0; fi\n'
+                'if [[ "$*" == *nanogpt_noise.pool* && "${FAIL_POOL:-0}" == 1 ]]; then exit 9; fi\n'
                 'if [[ "$*" == *nanogpt_noise.train* ]]; then\n'
                 '  output=""; take_output=0\n'
                 '  for arg in "$@"; do\n'
@@ -81,9 +82,12 @@ class OperatorScriptTests(unittest.TestCase):
             yield root, run_base, run_base_shell, env
 
     def invoke(self, root, env, *args, visible='0'):
+        return self.invoke_script(root, env, 'scripts/h100.sh', *args, visible=visible)
+
+    def invoke_script(self, root, env, script, *args, visible='0'):
         command_env = dict(env, CUDA_VISIBLE_DEVICES=visible)
         return subprocess.run(
-            [BASH, str(root / 'scripts/h100.sh'), *args],
+            [BASH, str(root / script), *args],
             cwd=root,
             env=command_env,
             capture_output=True,
@@ -145,6 +149,38 @@ class OperatorScriptTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, self.combined(result))
             for command in ('check', 'smoke', 'scope', 'finalize', 'status'):
                 self.assertIn(command, result.stdout)
+
+    def test_public_smoke_and_formal_shortcuts(self):
+        with self.fixture() as (root, run_base, _run_base_shell, env):
+            smoke = self.invoke_script(
+                root, env, 'scripts/run_smoke.sh', visible='0')
+            self.assertEqual(smoke.returncode, 0, self.combined(smoke))
+            self.assertTrue(
+                (run_base / 'smoke/1gpu/full-muon-node10/status.json').is_file())
+
+            formal = self.invoke_script(
+                root, env, 'scripts/run_formal.sh', visible='0,1,2,3')
+            output = self.combined(formal)
+            self.assertEqual(formal.returncode, 0, output)
+            self.assertIn('PY=<nanogpt_noise.pool>', output)
+            self.assertIn('PY=<nanogpt_noise.scope>', output)
+            self.assertIn('PY=<finalize>', output)
+            self.assertIn('FORMAL SCOPE FINALIZED', output)
+
+    def test_formal_shortcut_does_not_finalize_after_pool_failure(self):
+        with self.fixture() as (root, _run_base, _run_base_shell, env):
+            smoke = self.invoke_script(
+                root, env, 'scripts/run_smoke.sh', visible='0')
+            self.assertEqual(smoke.returncode, 0, self.combined(smoke))
+
+            failed_env = dict(env, FAIL_POOL='1')
+            formal = self.invoke_script(
+                root, failed_env, 'scripts/run_formal.sh', visible='0,1,2,3')
+            output = self.combined(formal)
+            self.assertEqual(formal.returncode, 9, output)
+            self.assertIn('PY=<nanogpt_noise.pool>', output)
+            self.assertNotIn('PY=<finalize>', output)
+            self.assertNotIn('FORMAL SCOPE FINALIZED', output)
 
 
 if __name__ == '__main__':
