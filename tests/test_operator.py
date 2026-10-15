@@ -47,6 +47,16 @@ class OperatorScriptTests(unittest.TestCase):
             python_stub = base / 'python-stub.sh'
             python_stub.write_text(
                 '#!/usr/bin/env bash\n'
+                'if [[ "${REQUIRE_SAFE_DIRECTORY:-0}" == 1 ]]; then\n'
+                '  found=0\n'
+                '  for ((index=0; index<${GIT_CONFIG_COUNT:-0}; index++)); do\n'
+                '    key_name="GIT_CONFIG_KEY_${index}"\n'
+                '    value_name="GIT_CONFIG_VALUE_${index}"\n'
+                '    if [[ "${!key_name:-}" == safe.directory && '
+                '"${!value_name:-}" == "$EXPECTED_SAFE_DIRECTORY" ]]; then found=1; fi\n'
+                '  done\n'
+                '  (( found )) || exit 97\n'
+                'fi\n'
                 'printf "PY=<%s>\\n" "$@" >&2\n'
                 f'if [[ "$*" == *nanogpt_noise.data* ]]; then echo "{EXPECTED_ID}"; exit 0; fi\n'
                 'if [[ "$*" == *nanogpt_noise.pool* && "${FAIL_POOL:-0}" == 1 ]]; then exit 9; fi\n'
@@ -67,6 +77,21 @@ class OperatorScriptTests(unittest.TestCase):
             git_stub = fake_bin / 'git'
             git_stub.write_text(
                 '#!/usr/bin/env bash\n'
+                'if [[ "${REQUIRE_SAFE_DIRECTORY:-0}" == 1 ]]; then\n'
+                '  found=0\n'
+                '  for ((index=0; index<${GIT_CONFIG_COUNT:-0}; index++)); do\n'
+                '    key_name="GIT_CONFIG_KEY_${index}"\n'
+                '    value_name="GIT_CONFIG_VALUE_${index}"\n'
+                '    if [[ "${!key_name:-}" == safe.directory && '
+                '"${!value_name:-}" == "$EXPECTED_SAFE_DIRECTORY" ]]; then\n'
+                '      found=1\n'
+                '    fi\n'
+                '  done\n'
+                '  if (( ! found )); then\n'
+                '    echo "fatal: detected dubious ownership in repository" >&2\n'
+                '    exit 128\n'
+                '  fi\n'
+                'fi\n'
                 'if [[ "${1:-}" == rev-parse ]]; then echo test-commit; exit 0; fi\n'
                 'if [[ "${1:-}" == status ]]; then exit 0; fi\n'
                 'exit 0\n',
@@ -166,6 +191,20 @@ class OperatorScriptTests(unittest.TestCase):
             self.assertIn('PY=<nanogpt_noise.scope>', output)
             self.assertIn('PY=<finalize>', output)
             self.assertIn('FORMAL SCOPE FINALIZED', output)
+
+    def test_public_smoke_handles_repository_owner_mismatch(self):
+        with self.fixture() as (root, _run_base, _run_base_shell, env):
+            guarded_env = dict(
+                env,
+                REQUIRE_SAFE_DIRECTORY='1',
+                EXPECTED_SAFE_DIRECTORY=self.shell_path(root),
+                GIT_CONFIG_COUNT='1',
+                GIT_CONFIG_KEY_0='color.ui',
+                GIT_CONFIG_VALUE_0='false')
+            smoke = self.invoke_script(
+                root, guarded_env, 'scripts/run_smoke.sh', visible='0')
+            self.assertEqual(smoke.returncode, 0, self.combined(smoke))
+            self.assertIn('SMOKE PASSED', smoke.stdout)
 
     def test_formal_shortcut_does_not_finalize_after_pool_failure(self):
         with self.fixture() as (root, _run_base, _run_base_shell, env):

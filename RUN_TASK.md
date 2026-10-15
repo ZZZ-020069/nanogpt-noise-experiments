@@ -16,11 +16,11 @@
 
 ```bash
 cd /data/260010171/nanogpt-noise-experiments
-git pull --ff-only
+git -c safe.directory=/data/260010171/nanogpt-noise-experiments pull --ff-only
 python -m pip install -e '.[plots]'
 ```
 
-开始 smoke 后不要再更新或修改代码。以上准备不需要在每个实验任务前重复。
+这里的 `-c safe.directory=...` 只用于让旧版本成功拉取本次修复，不会修改全局 Git 配置。更新后，两个启动脚本会自动为当前进程处理平台用户与仓库所有者不一致的问题；无需再执行 `git config --global`。开始 smoke 后不要再更新或修改代码。以上准备不需要在每个实验任务前重复。
 
 ## 1. 一张 H100：运行 smoke
 

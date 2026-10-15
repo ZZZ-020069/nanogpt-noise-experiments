@@ -14,7 +14,7 @@ bash scripts/run_smoke.sh
 bash scripts/run_formal.sh
 ```
 
-第二条命令默认运行 `full`；其他 scope 使用 `bash scripts/run_formal.sh last1` 等。`scripts/h100.sh` 的各子命令是维护和排障工具，不是学长需要逐项执行的正常流程。
+第二条命令默认运行 `full`；其他 scope 使用 `bash scripts/run_formal.sh last1` 等。两个入口会自动处理平台运行用户与仓库所有者不一致导致的 Git `dubious ownership`，且只信任当前仓库路径、不修改全局 Git 配置。`scripts/h100.sh` 的各子命令是维护和排障工具，不是学长需要逐项执行的正常流程。
 
 正式运行采用四个独立单卡进程：每张 H100 同时处理一个不同任务，不采用四卡 DistributedDataParallel（DDP）共同训练一个候选。由于结果盘按约 200 GB 规划，六个训练范围必须逐个运行；完成一个范围后，先封存、传出并校验，再清空服务器副本并运行下一个范围。程序不会自动监控剩余磁盘空间。
 
@@ -85,10 +85,10 @@ cd /data/260010171/nanogpt-noise-experiments
 更新已有仓库时，先确认没有训练进程，再执行：
 
 ```bash
-git pull --ff-only
+git -c safe.directory=/data/260010171/nanogpt-noise-experiments pull --ff-only
 ```
 
-正式实验开始后固定 commit，不要边训练边更新代码。后文命令均在仓库根目录执行。
+旧版本尚未包含自动处理逻辑，因此第一次拉取本次修复时使用上面的单次 `-c safe.directory=...` 参数。更新完成后，公开启动脚本会在当前进程树内自动配置准确的仓库路径，无需执行 `git config --global`。正式实验开始后固定 commit，不要边训练边更新代码。后文命令均在仓库根目录执行。
 
 ## 3. 准备 Python 与 CUDA 环境
 
@@ -170,8 +170,8 @@ git lfs pull
 
 ```bash
 cd /data/260010189/inputs
-git pull --ff-only
-git lfs pull
+git -c safe.directory=/data/260010189/inputs pull --ff-only
+git -c safe.directory=/data/260010189/inputs lfs pull
 ```
 
 当前输入交付提交为：
@@ -248,7 +248,7 @@ bash scripts/h100.sh check
 9cabd9c54c6d717354f8f6750715f9280c5502f0a85a9032806b9c7956cbd76e
 ```
 
-当前版本应显示 48 项测试并在末尾输出 `OK`。这一步验证协议和调度代码，不验证 H100；检查失败时不要启动训练。
+当前版本应显示 49 项测试并在末尾输出 `OK`。这一步验证协议和调度代码，不验证 H100；检查失败时不要启动训练。
 
 如果需要单独排查某一项，可手动执行底层命令：
 
@@ -551,6 +551,7 @@ Slurm 作业号不是实验 job 编号。
 | 现象 | 处理 |
 |---|---|
 | `No module named nanogpt_noise` | 在仓库根目录激活正确环境并运行 `python -m pip install -e '.[plots]'` |
+| `detected dubious ownership` | 说明服务器仍是旧 commit，或绕过了公开入口。先按第 2 节使用一次带准确 `safe.directory` 的 `git pull`，随后运行 `run_smoke.sh` 或 `run_formal.sh`；无需写全局配置 |
 | `code worktree is not clean` | 不要带着本地修改运行正式实验；保存必要内容后恢复到约定 commit 的干净工作区 |
 | `smoke commit marker is missing` | 先在一张 H100 上运行 `bash scripts/run_smoke.sh`，不要跳过实机验收 |
 | smoke commit 与当前 commit 不同 | 切回通过 smoke 的 commit，或在当前 commit 重新执行 smoke；不要混用两个代码版本 |

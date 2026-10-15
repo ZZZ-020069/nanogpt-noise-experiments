@@ -38,6 +38,22 @@ die() {
   exit 2
 }
 
+configure_git_safe_directory() {
+  local index="${GIT_CONFIG_COUNT:-0}"
+  local key_name value_name
+  [[ "$index" =~ ^[0-9]+$ ]] || die 'GIT_CONFIG_COUNT must be a non-negative integer'
+  key_name="GIT_CONFIG_KEY_${index}"
+  value_name="GIT_CONFIG_VALUE_${index}"
+  export "$key_name=safe.directory"
+  export "$value_name=$REPO_ROOT"
+  export GIT_CONFIG_COUNT=$((index + 1))
+}
+
+# The platform can mount a repository owned by a different host user. Trust only
+# this script-derived repository path, for this process tree, without modifying
+# the runtime user's global Git configuration.
+configure_git_safe_directory
+
 validate_scope() {
   case "${1:-}" in
     full|last1|last2|last3|last6|last12) ;;
