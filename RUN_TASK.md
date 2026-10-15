@@ -12,32 +12,33 @@
 结果：/data/260010171/results/nanogpt-v1.5
 ```
 
-第一次使用这个版本时，在已经激活 CUDA PyTorch 环境的终端执行一次：
+停止旧任务后，第一次使用这个版本时执行一次更新：
 
 ```bash
-cd /data/260010171/nanogpt-noise-experiments
+cd /data/260010171/nanogpt-noise-experiments &&
 git -c safe.directory=/data/260010171/nanogpt-noise-experiments pull --ff-only
-python -m pip install -e '.[plots]'
 ```
 
 这里的 `-c safe.directory=...` 只用于让旧版本成功拉取本次修复，不会修改全局 Git 配置。更新后，两个启动脚本会自动为当前进程处理平台用户与仓库所有者不一致的问题；无需再执行 `git config --global`。开始 smoke 后不要再更新或修改代码。以上准备不需要在每个实验任务前重复。
 
 ## 1. 一张 H100：运行 smoke
 
-申请一张 H100，在仓库目录执行一条命令：
+申请一张 H100，ACP 启动命令填写：
 
 ```bash
-bash scripts/run_smoke.sh
+cd /data/260010171/nanogpt-noise-experiments && bash scripts/run_acp.sh smoke
 ```
 
-脚本会自动检查代码和六个输入文件、校验数据身份、运行全部 CPU 测试、检查单卡环境，并完成 8 步 smoke。终端显示 `SMOKE PASSED` 即通过。
+脚本会先选择兼容环境；若平台只有 Python 3.9，则通过 Conda 创建独立 Python 3.11 + CUDA PyTorch 环境，不修改 base。首次安装需要网络和系统盘额外空间，后续自动复用；任何安装失败都会停止，不会继续训练。无需在启动命令中另加 pip install。
+
+然后自动检查代码和六个输入文件、校验数据身份、运行全部 CPU 测试、检查单卡环境，并完成 8 步 smoke。终端显示 `SMOKE PASSED` 即通过。
 
 ## 2. 四张 H100：运行正式实验
 
-申请同一节点上的四张 H100，在相同仓库和 Python 环境执行：
+smoke 通过后，申请同一节点上的四张 H100，ACP 启动命令填写：
 
 ```bash
-bash scripts/run_formal.sh
+cd /data/260010171/nanogpt-noise-experiments && bash scripts/run_acp.sh formal full
 ```
 
 不提供参数时默认运行 `full`。这一条命令会自动：
@@ -67,7 +68,7 @@ bash scripts/run_formal.sh
 然后运行下一个 scope，例如：
 
 ```bash
-bash scripts/run_formal.sh last1
+bash scripts/run_acp.sh formal last1
 ```
 
 依次运行：
@@ -77,5 +78,7 @@ full -> last1 -> last2 -> last3 -> last6 -> last12
 ```
 
 六个 scope 不能由脚本在服务器上自动连续运行，因为 `full` 单独就可能占用约 195.58 GB；每个 scope 完成后必须先传出、校验和清理，才能安全开始下一个 scope。脚本不会自动删除任何结果。
+
+环境默认位于 `$HOME/.local/share/nanogpt-noise/env-py311`；环境额外占用数 GB，不计入结果盘约 195.58 GB 的估算。确保系统盘有空间；如需指定其他持久盘，设置 `ENV_PREFIX` 并在两个任务中使用相同值。smoke 与正式运行之间不要更新代码。
 
 更详细的传输、校验、清理和故障排查方法见 [README.md](README.md)。

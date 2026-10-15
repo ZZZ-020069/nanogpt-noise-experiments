@@ -4,17 +4,17 @@
 
 > **请先阅读 [简短任务说明](RUN_TASK.md)。** 本 README 用于需要进一步查询环境、存储、恢复、传输和故障处理细节时参考。
 
-正常运行只有两个公开入口：
+ACP 平台正常运行只需以下两个命令（自动准备 Python 环境）：
 
 ```bash
 # 一张 H100：自动检查并完成 smoke
-bash scripts/run_smoke.sh
+bash scripts/run_acp.sh smoke
 
 # 四张 H100：运行或恢复 full 的全部任务，成功后自动 finalize
-bash scripts/run_formal.sh
+bash scripts/run_acp.sh formal
 ```
 
-第二条命令默认运行 `full`；其他 scope 使用 `bash scripts/run_formal.sh last1` 等。两个入口会自动处理平台运行用户与仓库所有者不一致导致的 Git `dubious ownership`，且只信任当前仓库路径、不修改全局 Git 配置。`scripts/h100.sh` 的各子命令是维护和排障工具，不是学长需要逐项执行的正常流程。
+第二条命令默认运行 `full`；其他 scope 使用 `bash scripts/run_acp.sh formal last1` 等。ACP 入口会自动处理平台运行用户与仓库所有者不一致导致的 Git `dubious ownership`，且只信任当前仓库路径、不修改全局 Git 配置。`scripts/h100.sh` 的各子命令是维护和排障工具，不是学长需要逐项执行的正常流程。
 
 正式运行采用四个独立单卡进程：每张 H100 同时处理一个不同任务，不采用四卡 DistributedDataParallel（DDP）共同训练一个候选。由于结果盘按约 200 GB 规划，六个训练范围必须逐个运行；完成一个范围后，先封存、传出并校验，再清空服务器副本并运行下一个范围。程序不会自动监控剩余磁盘空间。
 
@@ -92,16 +92,45 @@ git -c safe.directory=/data/260010171/nanogpt-noise-experiments pull --ff-only
 
 ## 3. 准备 Python 与 CUDA 环境
 
-优先使用服务器已有的 Python 3.11 或更高版本以及 CUDA 版 PyTorch 2.6–2.x 环境。将下面的 `实际环境名` 替换为服务器上的 Conda 环境；如果服务器不使用 Conda，则先按管理员提供的方法进入正确环境：
+ACP 默认 Python 3.9 不满足项目要求。使用 `run_acp.sh` 后无需手动激活或安装：
+
+1. 若当前 Python ≥3.11 且 CUDA PyTorch、NumPy、matplotlib 已可用，直接复用。
+2. 否则通过 Conda 在 `$HOME/.local/share/nanogpt-noise/env-py311` 创建独立 Python 3.11 环境，不升级或改写平台 base 环境。新环境安装 PyTorch 2.8.0（CUDA 12.8）、NumPy 2.1.3、matplotlib 3.9.4；PyTorch wheel 源采用[官方历史版本安装说明](https://pytorch.org/get-started/previous-versions/)。
+3. 安装当前项目、输出实际解释器和版本，然后执行检查与训练。任何一步失败立即退出。
+4. 再次启动会复用兼容环境。首次安装需要访问 conda-forge、PyTorch wheel 源和 PyPI，可能耗时较长；网络、驱动或磁盘不满足要求时必须解决报错，不能跳过检查。
+
+环境默认放在用户目录，不放入结果目录。CUDA 依赖额外占用数 GB，**不包含在 195.58 GB 结果峰值估算内**；请确保系统盘容量。若用户目录与结果共用同一配额，应使用 `ENV_PREFIX=/其他持久盘/nanogpt-py311`，并在 smoke/正式任务中保持一致。不要同时提交多个首次安装任务。
+
+可选：只安装环境、不运行训练：
 
 ```bash
-conda activate 实际环境名
-python --version
-python -c "import torch; print(torch.__version__, torch.version.cuda)"
-python -m pip install -e '.[plots]'
+bash scripts/run_acp.sh prepare
 ```
 
-PyTorch 必须带 CUDA 支持，`torch.version.cuda` 不能为 `None`。登录节点可能没有 GPU，因此 GPU 可用性和 BF16 支持在第 6 节进入计算节点后检查。安装命令只安装本项目代码及分析依赖，不会替运行者申请 GPU。不要把仓库的 CPU 测试环境当作 H100 环境。
+已有指定环境时，可用 `PYTHON=/绝对路径/bin/python bash scripts/run_acp.sh smoke`。显式指定不兼容的解释器会报错，不会擅自替换。新入口不会自动拉取代码或改变训练参数；原 `run_smoke.sh`、`run_formal.sh` 和 `h100.sh` 保留为已准备好环境时的底层入口。
+
+### ACP 平台提交命令
+
+先停止旧任务，只需在更新版本时运行一次：
+
+```bash
+cd /data/260010171/nanogpt-noise-experiments &&
+git -c safe.directory=/data/260010171/nanogpt-noise-experiments pull --ff-only
+```
+
+申请 **1 张 H100**，启动命令填写：
+
+```bash
+cd /data/260010171/nanogpt-noise-experiments && bash scripts/run_acp.sh smoke
+```
+
+显示 `SMOKE PASSED` 后，申请同节点 **4 张 H100**，启动命令填写：
+
+```bash
+cd /data/260010171/nanogpt-noise-experiments && bash scripts/run_acp.sh formal full
+```
+
+不要再在 ACP 命令前添加旧的 `python -m pip install` 或不带 safe.directory 的 Git 命令。更新失败就停止，不能继续运行旧脚本；使用上面的 `&&` 保证前一步成功才继续。smoke 与正式任务之间不再更新代码。
 
 ## 4. 准备数据、冻结产物与目录
 
@@ -228,7 +257,7 @@ df -B1 "$RUN_BASE"
 
 ## 5. 可选：单独执行不训练的检查
 
-通常无需单独执行本节，因为 `run_smoke.sh` 会自动完成全部检查。维护者需要在申请 GPU 前排查输入或代码时，可在仓库根目录执行：
+通常无需单独执行本节，因为 ACP smoke 入口 会自动完成全部检查。维护者需要在申请 GPU 前排查输入或代码时，可在仓库根目录执行：
 
 ```bash
 bash scripts/h100.sh check
@@ -248,7 +277,7 @@ bash scripts/h100.sh check
 9cabd9c54c6d717354f8f6750715f9280c5502f0a85a9032806b9c7956cbd76e
 ```
 
-当前版本应显示 49 项测试并在末尾输出 `OK`。这一步验证协议和调度代码，不验证 H100；检查失败时不要启动训练。
+当前版本应显示 55 项测试并在末尾输出 `OK`。这一步验证协议和调度代码，不验证 H100；检查失败时不要启动训练。
 
 如果需要单独排查某一项，可手动执行底层命令：
 
@@ -265,7 +294,7 @@ git rev-parse HEAD
 
 ## 6. 用一张 H100 验收单候选
 
-进入实际 GPU 计算节点后检查：
+以下为可选排障检查，应在 ACP 输出的解释器环境中执行；默认 Python 可能仍是平台的 3.9，不能用它判断新环境。正常流程直接运行下面的 ACP smoke 命令：
 
 ```bash
 nvidia-smi
@@ -277,7 +306,7 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.is_bf16_sup
 先申请只含一张 H100 的交互式计算会话，并确认当前进程只看见分配到的 GPU。进入仓库根目录后执行唯一一条 smoke 命令：
 
 ```bash
-bash scripts/run_smoke.sh
+bash scripts/run_acp.sh smoke
 ```
 
 脚本会先完成第 5 节的全部检查，再运行单卡训练，因此不需要手工设置 `DATA_DIR`、`ARTIFACT_DIR`、`RUN_BASE` 或 `RUN_DIR`，也不需要另外运行 `check`。
@@ -330,7 +359,7 @@ python -m json.tool /data/260010171/results/nanogpt-v1.5/smoke/1gpu/full-muon-no
 
 ## 8. 正式运行一个 scope
 
-以下以 `full` 为例。其他 scope 作为脚本的唯一参数，例如 `bash scripts/run_formal.sh last1`。
+以下以 `full` 为例。其他 scope 作为脚本的唯一参数，例如 `bash scripts/run_acp.sh formal last1`。
 
 六个 scope 建议按下列顺序逐个完成；不要跳到 `queue 0 839`，也不要并行启动两个 scope：
 
@@ -343,7 +372,7 @@ full -> last1 -> last2 -> last3 -> last6 -> last12
 正式任务需要同一节点上的四张 H100。如果 Slurm 或其他调度器已经设置 `CUDA_VISIBLE_DEVICES`，不要覆盖。进入仓库根目录后执行一条正式命令：
 
 ```bash
-bash scripts/run_formal.sh
+bash scripts/run_acp.sh formal
 ```
 
 不提供参数时默认运行 `full`。脚本自动使用 `/data/260010171/results/nanogpt-v1.5/full` 作为独立结果目录，检查输入、smoke 状态与 commit 一致性，运行或恢复全部 140 个 job，并在任务池成功结束后自动执行 `finalize`。四个 worker 各占一张卡；某张卡完成一个 job 后，从当前 scope 的共享队列领取下一个 job。同一 job 的 8 个 LR 候选始终顺序执行，不会被拆到八张卡并行。
@@ -351,14 +380,14 @@ bash scripts/run_formal.sh
 只有在独立服务器上、且运行者已经获准使用 0、1、2、3 号卡时，才手动指定：
 
 ```bash
-CUDA_VISIBLE_DEVICES=0,1,2,3 bash scripts/run_formal.sh
+CUDA_VISIBLE_DEVICES=0,1,2,3 bash scripts/run_acp.sh formal
 ```
 
 建议在 `tmux` 中运行长任务：
 
 ```bash
 tmux new -s nanogpt-full
-# 在 tmux 内重新激活环境，然后运行 run_formal.sh
+# 在 tmux 内运行 bash scripts/run_acp.sh formal full
 ```
 
 ### 8.2 查看进度
@@ -375,7 +404,7 @@ tail -f /data/260010171/results/nanogpt-v1.5/full/launcher/job_0000.log
 任务被抢占、SSH 断开或发生基础设施故障后，修复环境并使用相同 commit 重新执行同一条命令：
 
 ```bash
-bash scripts/run_formal.sh
+bash scripts/run_acp.sh formal
 ```
 
 完成候选会复用已有终态；未完成候选从自己的 `latest.pt` 恢复。基础设施故障必须恢复原候选，不能换一个 LR 顶替。不要修改 `metadata.json` 绕过身份检查。
@@ -550,10 +579,11 @@ Slurm 作业号不是实验 job 编号。
 
 | 现象 | 处理 |
 |---|---|
+| `requires a different Python: 3.9` | 使用 `bash scripts/run_acp.sh smoke`，不要在它前面用 base Python 安装项目 |
 | `No module named nanogpt_noise` | 在仓库根目录激活正确环境并运行 `python -m pip install -e '.[plots]'` |
 | `detected dubious ownership` | 说明服务器仍是旧 commit，或绕过了公开入口。先按第 2 节使用一次带准确 `safe.directory` 的 `git pull`，随后运行 `run_smoke.sh` 或 `run_formal.sh`；无需写全局配置 |
 | `code worktree is not clean` | 不要带着本地修改运行正式实验；保存必要内容后恢复到约定 commit 的干净工作区 |
-| `smoke commit marker is missing` | 先在一张 H100 上运行 `bash scripts/run_smoke.sh`，不要跳过实机验收 |
+| `smoke commit marker is missing` | 先在一张 H100 上运行 `bash scripts/run_acp.sh smoke`，不要跳过实机验收 |
 | smoke commit 与当前 commit 不同 | 切回通过 smoke 的 commit，或在当前 commit 重新执行 smoke；不要混用两个代码版本 |
 | `CUDA unavailable` | 确认进入 GPU 节点、安装 CUDA 版 PyTorch，检查驱动兼容性 |
 | 输入校验 ID 不同或 `hash mismatch` | 停止运行，重新取得项目提供方给出的完整数据和冻结产物；不要自行重建 |
@@ -571,6 +601,7 @@ Slurm 作业号不是实验 job 编号。
 
 本 README 是运行与结果交接手册。仓库内的 [实验设计发布快照](docs/nanogpt_experiment_design.md) 说明固定的科学参数；运行者不需要访问仓库之外的文档，也不应自行改动协议。正式结果由 Git commit、候选 metadata、输入身份和 scope manifest 共同标识。
 
+- [scripts/run_acp.sh](scripts/run_acp.sh)：ACP 自动环境准备与 smoke/formal 入口；
 - [scripts/run_smoke.sh](scripts/run_smoke.sh)：学长的一键单卡 smoke 入口；
 - [scripts/run_formal.sh](scripts/run_formal.sh)：学长的一键四卡正式 scope 入口，成功后自动 finalize；
 - [scripts/h100.sh](scripts/h100.sh)：供维护和排障使用的生命周期工具；
