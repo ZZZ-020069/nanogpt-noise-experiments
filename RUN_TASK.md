@@ -29,7 +29,7 @@ git -c safe.directory=/data/260010171/nanogpt-noise-experiments pull --ff-only
 cd /data/260010171/nanogpt-noise-experiments && bash scripts/run_acp.sh inputs
 ```
 
-脚本会从固定 OpenWebText revision 生成 10M validation tokens 和 1B train tokens，再生成统一初始化权重和固定窗口，最后登记六文件 SHA-256 与本轮唯一 input ID。过程可能运行数小时，需要服务器访问 Hugging Face 和 Python 软件源。看到 `INPUT BUNDLE REGISTERED` 才算成功；此后六个 scope 共用 `/data/260010171/inputs`，不得重新生成。
+脚本会从固定 OpenWebText revision 生成一份包含 10M validation tokens 和 1B train tokens 的**固定数据语料**，再生成统一初始化权重和固定窗口，最后登记六文件 SHA-256 与本轮唯一 input ID。这里的 1B 是 `train.bin` 中保存的数据量，不是单条训练轨迹的预算；每个 LR 候选仍完整训练约 2.6B tokens（4960 steps，实际 2,600,468,480 tokens），训练期间会从这份固定语料重复采样。过程可能运行数小时，需要服务器访问 Hugging Face 和 Python 软件源。看到 `INPUT BUNDLE REGISTERED` 才算成功；此后六个 scope 共用 `/data/260010171/inputs`，不得重新生成。
 
 ## 2. 一张 H100：运行 smoke
 

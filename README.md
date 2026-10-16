@@ -183,7 +183,7 @@ cd /data/260010171/nanogpt-noise-experiments
 bash scripts/run_acp.sh inputs
 ```
 
-程序会固定读取 `Skylion007/openwebtext` revision `79d93d786212f7344586290adb811d4ae6a1762c`，使用 GPT-2 tokenizer、shuffle seed=2357 和 buffer=10000；先生成 10,000,000 个验证 token，再生成 1,000,000,000 个训练 token。随后生成统一初始化权重和训练/评估窗口，写入关键依赖版本、六文件哈希及本轮 input ID。该过程需要下载和编码大量文本，可能运行数小时；不要因日志长时间只显示进度就终止任务。Hugging Face 还可能使用较大的临时缓存；空间紧张时在命令前设置 `HF_HOME=/另一块临时盘/huggingface-cache`，登记成功后该缓存可以清理，但 `/data/260010171/inputs` 不得清理或改动。
+程序会固定读取 `Skylion007/openwebtext` revision `79d93d786212f7344586290adb811d4ae6a1762c`，使用 GPT-2 tokenizer、shuffle seed=2357 和 buffer=10000；先生成包含 10,000,000 个验证 token 和 1,000,000,000 个训练 token 的固定数据语料。这里的 1B 是 `train.bin` 的语料容量，不是训练预算；每个 LR 候选仍运行 4960 steps，实际累计处理 2,600,468,480 个训练 token，期间会从固定语料重复采样。随后程序生成统一初始化权重和训练/评估窗口，写入关键依赖版本、六文件哈希及本轮 input ID。该过程需要下载和编码大量文本，可能运行数小时；不要因日志长时间只显示进度就终止任务。Hugging Face 还可能使用较大的临时缓存；空间紧张时在命令前设置 `HF_HOME=/另一块临时盘/huggingface-cache`，登记成功后该缓存可以清理，但 `/data/260010171/inputs` 不得清理或改动。
 
 若任务中断，先确认旧进程已经结束，再重新运行同一命令。程序只会清理由自己创建的 `.incomplete` 文件；已有 `registration.json` 时只验证，不重新下载或覆盖。若报告 stale `.lock`，先保存日志并确认没有制备进程仍在运行，再由维护者检查对应锁文件，不能同时启动第二个制备任务。
 
