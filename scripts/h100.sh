@@ -5,7 +5,7 @@ set -euo pipefail
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd -- "$REPO_ROOT"
 
-INPUT_ROOT="${INPUT_ROOT:-/data/260010189/inputs}"
+INPUT_ROOT="${INPUT_ROOT:-/data/260010171/inputs}"
 DATA_DIR="${DATA_DIR:-$INPUT_ROOT/openwebtext_subset}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-$INPUT_ROOT/frozen-artifacts}"
 RUN_BASE="${RUN_BASE:-/data/260010171/results/nanogpt-v1.5}"
@@ -26,7 +26,7 @@ usage() {
     '' \
     'SCOPE: full, last1, last2, last3, last6, or last12.' \
     'Defaults:' \
-    '  INPUT_ROOT=/data/260010189/inputs' \
+    '  INPUT_ROOT=/data/260010171/inputs' \
     '  RUN_BASE=/data/260010171/results/nanogpt-v1.5' \
     '' \
     'smoke requires one visible H100; scope requires exactly four.' \

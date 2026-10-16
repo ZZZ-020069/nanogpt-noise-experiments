@@ -8,7 +8,7 @@
 
 ```text
 代码：/data/260010171/nanogpt-noise-experiments
-输入：/data/260010189/inputs
+输入：/data/260010171/inputs
 结果：/data/260010171/results/nanogpt-v1.5
 ```
 

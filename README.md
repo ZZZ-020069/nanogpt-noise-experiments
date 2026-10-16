@@ -154,10 +154,8 @@ https://github.com/ZZZ-020069/nanogpt-noise-inputs.git
 ```text
 /data/260010171/
 ├── nanogpt-noise-experiments/        # 本代码仓库
-└── results/nanogpt-v1.5/             # RUN_BASE，在服务器上新建
-    └── 当前scope/                    # RUN_DIR，例如 full/
-
-/data/260010189/
+├── results/nanogpt-v1.5/             # RUN_BASE，在服务器上新建
+│   └── 当前scope/                    # RUN_DIR，例如 full/
 └── inputs/                           # 私有输入仓库的工作区
     ├── openwebtext_subset/           # DATA_DIR
     │   ├── train.bin                 # 2,000,000,000 bytes
@@ -183,10 +181,10 @@ git lfs version
 
 ### 4.2 首次下载六个输入文件
 
-学长已经创建 `/data/260010189/inputs/openwebtext_subset/` 时，不要再把仓库克隆成额外一层 `nanogpt-noise-inputs/`。应直接把 `/data/260010189/inputs` 初始化成输入仓库工作区，使最终路径与程序配置一致：
+学长已经创建 `/data/260010171/inputs/openwebtext_subset/` 时，不要再把仓库克隆成额外一层 `nanogpt-noise-inputs/`。应直接把 `/data/260010171/inputs` 初始化成输入仓库工作区，使最终路径与程序配置一致：
 
 ```bash
-cd /data/260010189/inputs
+cd /data/260010171/inputs
 git init
 git remote add origin https://github.com/ZZZ-020069/nanogpt-noise-inputs.git
 git lfs install
@@ -198,9 +196,9 @@ git lfs pull
 若该目录已经完成过上述初始化，则不要再次执行 `git init` 或 `git remote add`，改用：
 
 ```bash
-cd /data/260010189/inputs
-git -c safe.directory=/data/260010189/inputs pull --ff-only
-git -c safe.directory=/data/260010189/inputs lfs pull
+cd /data/260010171/inputs
+git -c safe.directory=/data/260010171/inputs pull --ff-only
+git -c safe.directory=/data/260010171/inputs lfs pull
 ```
 
 当前输入交付提交为：
@@ -212,7 +210,7 @@ git -c safe.directory=/data/260010189/inputs lfs pull
 检查提交、LFS 对象、文件大小和仓库自带的 SHA-256 清单：
 
 ```bash
-cd /data/260010189/inputs
+cd /data/260010171/inputs
 git rev-parse HEAD
 git lfs ls-files
 ls -lh openwebtext_subset/train.bin \
@@ -232,8 +230,8 @@ sha256sum -c SHA256SUMS
 
 ```bash
 cd /data/260010171/nanogpt-noise-experiments
-export DATA_DIR="/data/260010189/inputs/openwebtext_subset"
-export ARTIFACT_DIR="/data/260010189/inputs/frozen-artifacts"
+export DATA_DIR="/data/260010171/inputs/openwebtext_subset"
+export ARTIFACT_DIR="/data/260010171/inputs/frozen-artifacts"
 export RUN_BASE="/data/260010171/results/nanogpt-v1.5"
 mkdir -p "$RUN_BASE"
 
@@ -283,8 +281,8 @@ bash scripts/h100.sh check
 
 ```bash
 python -m nanogpt_noise.data \
-  --data /data/260010189/inputs/openwebtext_subset \
-  --artifacts /data/260010189/inputs/frozen-artifacts --verify
+  --data /data/260010171/inputs/openwebtext_subset \
+  --artifacts /data/260010171/inputs/frozen-artifacts --verify
 python -m unittest discover -s tests -v
 git status --short
 git rev-parse HEAD
@@ -552,8 +550,8 @@ Smoke、不完整任务和无有效 winner 的节点不会伪装成正式有限�
 仓库提供单节点四卡模板 [scripts/slurm.sh](scripts/slurm.sh)。必须在仓库根目录提交，并将所有占位符替换为学校实际分区、账号、H100 资源写法和绝对路径：
 
 ```bash
-export DATA_DIR="/data/260010189/inputs/openwebtext_subset"
-export ARTIFACT_DIR="/data/260010189/inputs/frozen-artifacts"
+export DATA_DIR="/data/260010171/inputs/openwebtext_subset"
+export ARTIFACT_DIR="/data/260010171/inputs/frozen-artifacts"
 export RUN_BASE="/data/260010171/results/nanogpt-v1.5"
 export SCOPE=full
 export RUN_DIR="$RUN_BASE/$SCOPE"

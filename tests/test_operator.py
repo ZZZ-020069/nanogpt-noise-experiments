@@ -174,6 +174,8 @@ class OperatorScriptTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, self.combined(result))
             for command in ('check', 'smoke', 'scope', 'finalize', 'status'):
                 self.assertIn(command, result.stdout)
+            self.assertIn('INPUT_ROOT=/data/260010171/inputs', result.stdout)
+            self.assertNotIn('260010189', result.stdout)
 
     def test_public_smoke_and_formal_shortcuts(self):
         with self.fixture() as (root, run_base, _run_base_shell, env):
