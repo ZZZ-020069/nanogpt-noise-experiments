@@ -33,6 +33,17 @@ class AcpTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn('PY=<nanogpt_noise.train>', result.stderr)
 
+    def test_inputs_installs_preparation_dependencies_and_registers_once(self):
+        input_root = self.helper.shell_path(self.base/'generated inputs')
+        self.env['INPUT_ROOT'] = input_root
+        result = self.invoke('inputs')
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn('PY=<requirements-prepare.txt>',result.stderr)
+        self.assertIn('PY=<nanogpt_noise.prepare>',result.stderr)
+        self.assertIn('PY=<--input-root>',result.stderr)
+        self.assertIn('INPUT BUNDLE REGISTERED',result.stdout)
+        self.assertNotIn('PY=<nanogpt_noise.train>',result.stderr)
+
     def test_invalid_explicit_runtime_stops(self):
         stub = self.base / 'bad-python'
         stub.write_text('#!/usr/bin/env bash\nexit 3\n', encoding='utf8')

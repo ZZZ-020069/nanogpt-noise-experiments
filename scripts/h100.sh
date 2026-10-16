@@ -8,12 +8,13 @@ cd -- "$REPO_ROOT"
 INPUT_ROOT="${INPUT_ROOT:-/data/260010171/inputs}"
 DATA_DIR="${DATA_DIR:-$INPUT_ROOT/openwebtext_subset}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-$INPUT_ROOT/frozen-artifacts}"
-RUN_BASE="${RUN_BASE:-/data/260010171/results/nanogpt-v1.5}"
+RUN_BASE="${RUN_BASE:-/data/260010171/results/nanogpt-v1.6}"
 PYTHON="${PYTHON:-python}"
 GIT_BIN="${GIT_BIN:-git}"
-EXPECTED_ID='9cabd9c54c6d717354f8f6750715f9280c5502f0a85a9032806b9c7956cbd76e'
+LEGACY_EXPECTED_ID='9cabd9c54c6d717354f8f6750715f9280c5502f0a85a9032806b9c7956cbd76e'
 SMOKE_STATUS="$RUN_BASE/smoke/1gpu/full-muon-node10/status.json"
 SMOKE_COMMIT="$RUN_BASE/smoke/operator_commit.txt"
+SMOKE_INPUT="$RUN_BASE/smoke/input_id.txt"
 export DATA_DIR ARTIFACT_DIR PYTHON
 
 usage() {
@@ -27,7 +28,7 @@ usage() {
     'SCOPE: full, last1, last2, last3, last6, or last12.' \
     'Defaults:' \
     '  INPUT_ROOT=/data/260010171/inputs' \
-    '  RUN_BASE=/data/260010171/results/nanogpt-v1.5' \
+    '  RUN_BASE=/data/260010171/results/nanogpt-v1.6' \
     '' \
     'smoke requires one visible H100; scope requires exactly four.' \
     'Activate the intended Python/CUDA environment before using this script.'
@@ -92,7 +93,7 @@ check_files() {
 }
 
 verify_inputs() {
-  local identity
+  local identity expected
   if [[ -f "$INPUT_ROOT/SHA256SUMS" ]]; then
     printf 'Checking input-repository SHA-256 manifest...\n'
     (cd -- "$INPUT_ROOT" && sha256sum -c SHA256SUMS)
@@ -100,13 +101,23 @@ verify_inputs() {
     printf 'WARNING: %s is absent; continuing with the project identity verifier.\n' \
       "$INPUT_ROOT/SHA256SUMS" >&2
   fi
-  identity="$("$PYTHON" -m nanogpt_noise.data \
-    --data "$DATA_DIR" --artifacts "$ARTIFACT_DIR" --verify)"
-  if [[ "$identity" != "$EXPECTED_ID" ]]; then
+  if [[ -f "$INPUT_ROOT/registration.json" ]]; then
+    identity="$("$PYTHON" -m nanogpt_noise.input_bundle verify --input-root "$INPUT_ROOT")"
+    expected="$identity"
+    printf 'Input registration: %s\n' "$INPUT_ROOT/registration.json"
+  else
+    identity="$("$PYTHON" -m nanogpt_noise.data \
+      --data "$DATA_DIR" --artifacts "$ARTIFACT_DIR" --verify)"
+    expected="$LEGACY_EXPECTED_ID"
+    printf '%s\n' 'Using the legacy published input identity (no registration.json).'
+  fi
+  if [[ "$identity" != "$expected" ]]; then
     printf 'Expected input ID: %s\nActual output: %s\n' \
-      "$EXPECTED_ID" "$identity" >&2
+      "$expected" "$identity" >&2
     die 'registered input identity verification failed'
   fi
+  INPUT_ID="$identity"
+  export INPUT_ID
   printf 'Input identity: %s\n' "$identity"
 }
 
@@ -143,18 +154,24 @@ validate_smoke() {
     die 'smoke output did not finish step 8'
 }
 
-record_smoke_commit() {
+record_smoke_identity() {
   mkdir -p -- "$(dirname -- "$SMOKE_COMMIT")"
   printf '%s\n' "$CODE_COMMIT" > "$SMOKE_COMMIT"
+  printf '%s\n' "$INPUT_ID" > "$SMOKE_INPUT"
 }
 
 require_matching_smoke() {
-  local smoke_commit
+  local smoke_commit smoke_input
   validate_smoke
   [[ -f "$SMOKE_COMMIT" ]] || die "smoke commit marker is missing: $SMOKE_COMMIT"
   smoke_commit="$(tr -d '\r\n' < "$SMOKE_COMMIT")"
   if [[ "$smoke_commit" != "$CODE_COMMIT" ]]; then
     die "smoke used commit $smoke_commit but current code is $CODE_COMMIT; rerun smoke"
+  fi
+  [[ -f "$SMOKE_INPUT" ]] || die "smoke input marker is missing: $SMOKE_INPUT"
+  smoke_input="$(tr -d '\r\n' < "$SMOKE_INPUT")"
+  if [[ "$smoke_input" != "$INPUT_ID" ]]; then
+    die "smoke used input $smoke_input but current input is $INPUT_ID; rerun smoke"
   fi
 }
 
@@ -173,7 +190,7 @@ case "$command" in
     export RUN_DIR="$RUN_BASE"
     bash scripts/run_4gpu.sh smoke
     validate_smoke
-    record_smoke_commit
+    record_smoke_identity
     printf 'SMOKE PASSED: %s\n' "$SMOKE_STATUS"
     ;;
   scope)
@@ -193,6 +210,8 @@ case "$command" in
     (( $# == 2 )) || die 'finalize requires exactly one scope name'
     validate_scope "$2"
     check_code
+    check_files
+    verify_inputs
     require_matching_smoke
     RUN_DIR="$RUN_BASE/$2"
     [[ -d "$RUN_DIR" ]] || die "scope directory is missing: $RUN_DIR"

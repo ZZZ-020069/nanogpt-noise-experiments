@@ -1,0 +1,5 @@
+# Direct versions for the single server-side corpus realization. The selected
+# versions are captured in meta.json; completed files are then frozen by hash.
+datasets==3.6.0
+tiktoken==0.9.0
+huggingface-hub==0.30.2

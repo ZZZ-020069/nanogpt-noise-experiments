@@ -59,6 +59,7 @@ class OperatorScriptTests(unittest.TestCase):
                 'fi\n'
                 'printf "PY=<%s>\\n" "$@" >&2\n'
                 f'if [[ "$*" == *nanogpt_noise.data* ]]; then echo "{EXPECTED_ID}"; exit 0; fi\n'
+                f'if [[ "$*" == *nanogpt_noise.input_bundle* ]]; then echo "${{FAKE_INPUT_ID:-{EXPECTED_ID}}}"; exit 0; fi\n'
                 'if [[ "$*" == *nanogpt_noise.pool* && "${FAIL_POOL:-0}" == 1 ]]; then exit 9; fi\n'
                 'if [[ "$*" == *nanogpt_noise.train* ]]; then\n'
                 '  output=""; take_output=0\n'
@@ -135,14 +136,24 @@ class OperatorScriptTests(unittest.TestCase):
             self.assertIn('/frozen-artifacts', output)
             self.assertIn(run_base_shell, output)
 
+    def test_check_accepts_a_locally_registered_bundle(self):
+        with self.fixture() as (root, run_base, _run_base_shell, env):
+            input_root = run_base.parent/'inputs'
+            (input_root/'registration.json').write_text('{}',encoding='utf8')
+            result = self.invoke(root,env,'check')
+            self.assertEqual(result.returncode,0,self.combined(result))
+            self.assertIn('Input registration:',result.stdout)
+
     def test_smoke_then_scope_and_finalize(self):
         with self.fixture() as (root, run_base, run_base_shell, env):
             smoke = self.invoke(root, env, 'smoke', visible='0')
             self.assertEqual(smoke.returncode, 0, self.combined(smoke))
             status = run_base / 'smoke/1gpu/full-muon-node10/status.json'
             marker = run_base / 'smoke/operator_commit.txt'
+            input_marker = run_base / 'smoke/input_id.txt'
             self.assertTrue(status.is_file())
             self.assertEqual(marker.read_text(encoding='utf-8').strip(), 'test-commit')
+            self.assertEqual(input_marker.read_text(encoding='utf-8').strip(), EXPECTED_ID)
 
             formal = self.invoke(root, env, 'scope', 'full', visible='0,1,2,3')
             output = self.combined(formal)
@@ -162,6 +173,17 @@ class OperatorScriptTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('smoke', self.combined(result).lower())
 
+    def test_scope_rejects_a_registered_input_changed_after_smoke(self):
+        with self.fixture() as (root,run_base,_run_base_shell,env):
+            (run_base.parent/'inputs'/'registration.json').write_text('{}',encoding='utf8')
+            first=dict(env,FAKE_INPUT_ID='first-input')
+            smoke=self.invoke(root,first,'smoke',visible='0')
+            self.assertEqual(smoke.returncode,0,self.combined(smoke))
+            changed=dict(env,FAKE_INPUT_ID='changed-input')
+            formal=self.invoke(root,changed,'scope','full',visible='0,1,2,3')
+            self.assertNotEqual(formal.returncode,0)
+            self.assertIn('current input',self.combined(formal))
+
     def test_invalid_scope_is_rejected(self):
         with self.fixture() as (root, _run_base, _run_base_shell, env):
             result = self.invoke(root, env, 'scope', 'bad', visible='0,1,2,3')
@@ -175,6 +197,7 @@ class OperatorScriptTests(unittest.TestCase):
             for command in ('check', 'smoke', 'scope', 'finalize', 'status'):
                 self.assertIn(command, result.stdout)
             self.assertIn('INPUT_ROOT=/data/260010171/inputs', result.stdout)
+            self.assertIn('RUN_BASE=/data/260010171/results/nanogpt-v1.6', result.stdout)
             self.assertNotIn('260010189', result.stdout)
 
     def test_public_smoke_and_formal_shortcuts(self):

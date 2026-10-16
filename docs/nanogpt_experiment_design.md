@@ -1,8 +1,8 @@
 # NanoGPT–Quadratic Proxy 实验设计主文档
 
 > **状态**：实验设计基线 / 实施前验证  
-> **版本**：v1.5  
-> **最后更新**：2026-10-12  
+> **版本**：v1.6  
+> **最后更新**：2026-10-16  
 > **用途**：本文件是 NanoGPT–Quadratic Proxy 项目的第一份独立实验设计基线，也是后续实现与修订的唯一设计依据。读者无需查阅对话或其他实验文档即可理解本文规定的参数与流程。设计设定不代表已取得实验结果；实施检查和后续研究事项见第 12 节。
 
 ---
@@ -64,7 +64,7 @@
 |---|---|
 | 架构 | 12 blocks、12 heads、768 hidden、1024 context、50304 vocab，`bias=False`、`dropout=0.0`，token embedding 与 LM head 权重共享 |
 | 数据 | 数据集标识 `openwebtext_subset`：OpenWebText 训练子集 1,000,000,000 tokens，验证子集 10,000,000 tokens；GPT-2 tiktoken 编码、文档末尾 EOT、uint16 存储；制备 seed=2357、shuffle buffer=10000 |
-| 数据身份 | 统一固定 train.bin/val.bin/meta.json，记录文件哈希、源数据 revision 和 tokenizer/依赖版本；全部 run 读取同一份产物，不按 run 重新抽取子集 |
+| 数据身份 | 在正式 smoke 前从固定 source revision 一次性生成并登记 train.bin/val.bin/meta.json，记录文件哈希、tokenizer 与关键依赖版本；全部 run 读取这同一份已登记产物，不按 run 或 scope 重新抽取子集 |
 | 全局 batch | 每 optimizer step 固定 524,288 tokens，即 512 条长 1024 的序列；参考 micro-batch=4，4 卡时每卡累积 32 次 |
 | 训练预算 | 目标 2,600,000,000 tokens；按整步向上取整，共 4960 steps，实际 2,600,468,480 tokens。所有正常候选相同，评估 tokens 不计入训练预算 |
 | 初始化 | `scratch`，seed=1337；Linear/Embedding 权重按均值 0、标准差 0.02 的正态分布初始化，残差 c_proj 权重标准差为 `0.02/sqrt(24)`，LayerNorm scale=1；各 scope 从同一份未训练初始权重开始，优化器状态重新初始化 |
@@ -570,11 +570,11 @@ NanoGPT 主网格的参数、Muon 学习率绑定与第 5.3 节追加策略均�
 
 ---
 
-### 12.1 实施产物登记 — 2026-10-08
+### 12.1 参考产物登记 — 2026-10-08
 
 NanoGPT 实现位于 `VSCode下载/New/nanogpt-noise-experiments/`，协议为 v1.5；仓库中的 `docs/nanogpt_experiment_design.md` 仅为本文件的发布快照，不另行维护。代码提交身份和实现文件哈希由每条 run 的 metadata 记录。本次没有启动正式训练或取得正式实验结果。
 
-已对固定数据进行尺寸、token 范围和元数据核验，并生成以下 SHA-256：
+以下是首次本地制备数据的参考登记。v1.6 的正式运行允许按第 12.3 节在目标服务器生成一个新的语料实现，因此这些 SHA-256 不再是新实验的强制值，也不能与新登记身份混用：
 
 | 产物 | SHA-256 |
 |---|---|
@@ -599,7 +599,22 @@ NanoGPT 实现位于 `VSCode下载/New/nanogpt-noise-experiments/`，协议为 v
 
 ---
 
+
+### 12.3 目标服务器输入登记 — 2026-10-16
+
+因外部文件传输与 Git LFS 不稳定，本轮正式实验采用服务器端一次性制备。制备程序固定使用 `Skylion007/openwebtext` 的 revision `79d93d786212f7344586290adb811d4ae6a1762c`、`train` split、streaming shuffle seed=2357、buffer=10000 和 GPT-2 tiktoken 编码；先取 10,000,000 个 validation tokens，再取 1,000,000,000 个 train tokens，边界文档余部丢弃。制备依赖的实际版本写入 meta.json；数据、统一初始化和固定窗口的哈希写入 identity.json、registration.json 与 SHA256SUMS。
+
+新生成语料可能因数据处理依赖的实现差异而不与 2026-10-08 参考文件逐字节相同。它仍来自同一固定语料分布、规模与处理规则，且不会依据 optimizer、噪声或 LR 选择样本，因此不对比较组施加差异化数据处理。它定义本轮 NanoGPT response surface 的单一数据实现；结论首先解释为该单 seed、单数据实现下的结果，不能把与参考文件的绝对 loss 差异解释成优化器效应。
+
+制备只允许在首次 H100 smoke 之前执行一次。registration.json 生成后，后续执行只做哈希和身份验证，不覆盖或重新抽样；full、last1、last2、last3、last6 和 last12 必须复用相同 input ID。正式 smoke 的 metadata 固定该 ID，任何文件变化、登记变化或重新制备均要求废弃尚未形成统一身份的输出并重新进行 smoke；已经开始正式 scope 后不得切换输入身份。新 input ID 和六文件哈希须在服务器制备完成后据实回填运行记录，当前不得预先编造。
+
+---
+
 ## 13. 基线版本与修订规则
+
+### v1.6 — 2026-10-16
+
+允许在目标服务器从固定的 `Skylion007/openwebtext` revision 按既定 tokenizer、shuffle seed、buffer、划分顺序和 token 数重新生成一次数据，并同时冻结初始化权重和评估窗口。生成结束后将该实现的文件哈希、依赖版本和 input ID 登记为本轮实验的唯一输入；六个 scope 必须共用，正式 smoke 后禁止重新生成。新实现与 2026-10-08 参考产物的精确 loss 不作逐值等同，但由于全部 optimizer、噪声节点、LR 和 scope 在同一登记数据上采用 paired protocol，内部比较口径不变。新增服务器端一键制备与强制身份校验；模型、噪声、优化器、训练预算和结果选择规则不变。
 
 ### v1.5 — 2026-10-12
 

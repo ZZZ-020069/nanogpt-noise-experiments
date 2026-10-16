@@ -4,9 +4,12 @@
 
 > **请先阅读 [简短任务说明](RUN_TASK.md)。** 本 README 用于需要进一步查询环境、存储、恢复、传输和故障处理细节时参考。
 
-ACP 平台正常运行只需以下两个命令（自动准备 Python 环境）：
+ACP 平台首次运行依次使用三个命令；输入只生成一次：
 
 ```bash
+# 首次一次性生成并登记数据、初始化权重和固定窗口
+bash scripts/run_acp.sh inputs
+
 # 一张 H100：自动检查并完成 smoke
 bash scripts/run_acp.sh smoke
 
@@ -14,7 +17,7 @@ bash scripts/run_acp.sh smoke
 bash scripts/run_acp.sh formal
 ```
 
-第二条命令默认运行 `full`；其他 scope 使用 `bash scripts/run_acp.sh formal last1` 等。ACP 入口会自动处理平台运行用户与仓库所有者不一致导致的 Git `dubious ownership`，且只信任当前仓库路径、不修改全局 Git 配置。`scripts/h100.sh` 的各子命令是维护和排障工具，不是学长需要逐项执行的正常流程。
+第三条命令默认运行 `full`；其他 scope 使用 `bash scripts/run_acp.sh formal last1` 等。ACP 入口会自动处理平台运行用户与仓库所有者不一致导致的 Git `dubious ownership`，且只信任当前仓库路径、不修改全局 Git 配置。`scripts/h100.sh` 的各子命令是维护和排障工具，不是学长需要逐项执行的正常流程。
 
 正式运行采用四个独立单卡进程：每张 H100 同时处理一个不同任务，不采用四卡 DistributedDataParallel（DDP）共同训练一个候选。由于结果盘按约 200 GB 规划，六个训练范围必须逐个运行；完成一个范围后，先封存、传出并校验，再清空服务器副本并运行下一个范围。程序不会自动监控剩余磁盘空间。
 
@@ -39,22 +42,22 @@ bash scripts/run_acp.sh formal
 开始操作前，应确认已经取得：
 
 1. 本代码仓库的读取权限；
-2. 私有输入仓库 `ZZZ-020069/nanogpt-noise-inputs` 的 Collaborator 邀请，并已使用运行者自己的 GitHub 账号接受；
-3. 服务器上的 Git LFS；输入仓库内含 `train.bin`、`val.bin`、`meta.json`、`initial.pt`、`windows.pt`、`identity.json`；
+2. 服务器能够访问 Hugging Face 数据源和 Python 软件源；
+3. `/data/260010171/inputs` 所在文件系统至少有约 3 GB 可用空间，并能长时间连续写入；
 4. 一台 Linux 计算节点上的四张 H100，四张卡必须能被同一个作业同时看见并支持 BF16；
 5. Python 3.11 或更高版本，以及与服务器驱动兼容的 CUDA 版 PyTorch；
 6. `full` 运行开始前至少 `200000000000` bytes 的可用文件系统空间；
 7. 一个独立于临时算力盘的持久结果接收位置，以及从计算服务器向该位置传输文件的方法；
 8. 若使用 Slurm，学校实际提供的 partition、account、GPU 资源写法和作业时限。
 
-输入仓库无权访问、Git LFS 不可用、输入目录缺文件或校验不通过时应停止并联系项目提供方，不必自行重新生成、替换或修改数据与冻结产物。学校集群参数不确定时需向集群管理员确认。
+数据下载、生成、登记或校验失败时应保存日志并恢复同一个制备任务；不得临时更换数据源、revision、tokenizer、样本量或随机设置。学校集群参数不确定时需向集群管理员确认。
 
 运行中若出现 OOM、CUDA、文件系统或调度器错误，应保存完整日志并恢复原任务。不要通过改学习率、batch、训练步数、模型、噪声、梯度裁剪、优化器或代码来规避错误。
 
 完整操作顺序如下：
 
 1. 克隆代码，准备 Python/CUDA 环境；
-2. 从私有输入仓库将数据和冻结产物下载到服务器的固定输入目录，并完成 LFS、SHA-256 与项目身份校验；
+2. 在服务器运行一次输入制备，生成数据、初始化权重和固定窗口并登记 SHA-256 与 input ID；
 3. 运行输入校验和 CPU 测试；
 4. 申请一张 H100，完成 8 步 smoke test；
 5. 申请同一节点上的四张 H100，完整运行当前 scope 的 140 个 job；
@@ -120,6 +123,14 @@ git -c safe.directory=/data/260010171/nanogpt-noise-experiments pull --ff-only
 
 申请 **1 张 H100**，启动命令填写：
 
+首次先提交一次输入制备任务（制备主要使用 CPU、网络和磁盘；平台若要求 GPU，可申请最小 GPU 规格）：
+
+```bash
+cd /data/260010171/nanogpt-noise-experiments && bash scripts/run_acp.sh inputs
+```
+
+看到 `INPUT BUNDLE REGISTERED` 后，再申请 **1 张 H100**，启动命令填写：
+
 ```bash
 cd /data/260010171/nanogpt-noise-experiments && bash scripts/run_acp.sh smoke
 ```
@@ -132,20 +143,14 @@ cd /data/260010171/nanogpt-noise-experiments && bash scripts/run_acp.sh formal f
 
 不要再在 ACP 命令前添加旧的 `python -m pip install` 或不带 safe.directory 的 Git 命令。更新失败就停止，不能继续运行旧脚本；使用上面的 `&&` 保证前一步成功才继续。smoke 与正式任务之间不再更新代码。
 
-## 4. 准备数据、冻结产物与目录
+## 4. 在服务器一次性生成并登记输入
 
-大型输入不放在本代码仓库，而是放在独立的私有 Git LFS 仓库：
-
-```text
-https://github.com/ZZZ-020069/nanogpt-noise-inputs.git
-```
-
-这里要区分“从输入仓库下载到服务器的文件”和“在服务器上新建的输出目录”：
+这里要区分“一次性生成的固定输入”和“训练输出”：
 
 | 变量 | 内容 | 是否需要提前传输 |
 |---|---|---|
-| `DATA_DIR` | `train.bin`、`val.bin` 和 `meta.json` | **需要**。从私有输入仓库通过 Git LFS 下载 |
-| `ARTIFACT_DIR` | `initial.pt`、`windows.pt` 和 `identity.json` | **需要**。从同一私有输入仓库通过 Git LFS 下载；不要自行生成替代文件 |
+| `DATA_DIR` | `train.bin`、`val.bin` 和 `meta.json` | 由 `run_acp.sh inputs` 从固定 OpenWebText revision 生成 |
+| `ARTIFACT_DIR` | `initial.pt`、`windows.pt` 和 `identity.json` | 同一命令在数据冻结后生成 |
 | `RUN_BASE` | 六个 scope 输出目录的父目录 | **不需要上传**。在服务器的大容量计算盘或项目盘上创建一个空目录即可 |
 | `RUN_DIR` | 当前一个 scope 的实际输出目录，例如 `RUN_BASE/full` | **不需要提前上传**。程序运行时自动产生内容；scope 完成后再传到约定的持久结果存储 |
 
@@ -154,85 +159,59 @@ https://github.com/ZZZ-020069/nanogpt-noise-inputs.git
 ```text
 /data/260010171/
 ├── nanogpt-noise-experiments/        # 本代码仓库
-├── results/nanogpt-v1.5/             # RUN_BASE，在服务器上新建
+├── results/nanogpt-v1.6/             # RUN_BASE，在服务器上新建
 │   └── 当前scope/                    # RUN_DIR，例如 full/
-└── inputs/                           # 私有输入仓库的工作区
+└── inputs/                           # 本轮实验唯一登记的输入
     ├── openwebtext_subset/           # DATA_DIR
     │   ├── train.bin                 # 2,000,000,000 bytes
     │   ├── val.bin                   #    20,000,000 bytes
     │   └── meta.json
-    └── frozen-artifacts/             # ARTIFACT_DIR
+    ├── frozen-artifacts/             # ARTIFACT_DIR
         ├── initial.pt                # 统一未训练初始权重
         ├── windows.pt                # 固定训练与评估窗口
         └── identity.json             # 文件哈希与身份
+    ├── registration.json             # 本轮唯一 input ID
+    └── SHA256SUMS                    # 六个输入文件的校验值
 ```
 
-### 4.1 取得私有仓库权限并检查 Git LFS
+### 4.1 一次性制备
 
-项目仓库所有者先在输入仓库的 `Settings -> Collaborators` 中添加运行者的 GitHub 用户名；运行者必须使用自己的账号接受邀请。不要共享 GitHub 密码或个人访问令牌。服务器使用 HTTPS 时应按学校允许的方式配置 GitHub CLI、credential helper 或个人访问令牌；GitHub 的密码提示框不接受账号登录密码。
-
-在服务器检查 Git LFS：
+在正式 smoke 之前只运行一次：
 
 ```bash
-git lfs version
+cd /data/260010171/nanogpt-noise-experiments
+bash scripts/run_acp.sh inputs
 ```
 
-如果命令不存在，先使用服务器的软件模块、系统包管理器或管理员提供的方法安装 Git LFS，不要继续执行普通 `git fetch` 来代替 LFS 下载。
+程序会固定读取 `Skylion007/openwebtext` revision `79d93d786212f7344586290adb811d4ae6a1762c`，使用 GPT-2 tokenizer、shuffle seed=2357 和 buffer=10000；先生成 10,000,000 个验证 token，再生成 1,000,000,000 个训练 token。随后生成统一初始化权重和训练/评估窗口，写入关键依赖版本、六文件哈希及本轮 input ID。该过程需要下载和编码大量文本，可能运行数小时；不要因日志长时间只显示进度就终止任务。Hugging Face 还可能使用较大的临时缓存；空间紧张时在命令前设置 `HF_HOME=/另一块临时盘/huggingface-cache`，登记成功后该缓存可以清理，但 `/data/260010171/inputs` 不得清理或改动。
 
-### 4.2 首次下载六个输入文件
+若任务中断，先确认旧进程已经结束，再重新运行同一命令。程序只会清理由自己创建的 `.incomplete` 文件；已有 `registration.json` 时只验证，不重新下载或覆盖。若报告 stale `.lock`，先保存日志并确认没有制备进程仍在运行，再由维护者检查对应锁文件，不能同时启动第二个制备任务。
 
-学长已经创建 `/data/260010171/inputs/openwebtext_subset/` 时，不要再把仓库克隆成额外一层 `nanogpt-noise-inputs/`。应直接把 `/data/260010171/inputs` 初始化成输入仓库工作区，使最终路径与程序配置一致：
-
-```bash
-cd /data/260010171/inputs
-git init
-git remote add origin https://github.com/ZZZ-020069/nanogpt-noise-inputs.git
-git lfs install
-git fetch origin main
-git checkout -b main --track origin/main
-git lfs pull
-```
-
-若该目录已经完成过上述初始化，则不要再次执行 `git init` 或 `git remote add`，改用：
-
-```bash
-cd /data/260010171/inputs
-git -c safe.directory=/data/260010171/inputs pull --ff-only
-git -c safe.directory=/data/260010171/inputs lfs pull
-```
-
-当前输入交付提交为：
+成功标志为：
 
 ```text
-1b3643ac44ff2b76ed471cc130a04c2c9c52fb01
+INPUT BUNDLE REGISTERED: /data/260010171/inputs
 ```
 
-检查提交、LFS 对象、文件大小和仓库自带的 SHA-256 清单：
+随后检查：
 
 ```bash
 cd /data/260010171/inputs
-git rev-parse HEAD
-git lfs ls-files
-ls -lh openwebtext_subset/train.bin \
-       openwebtext_subset/val.bin \
-       openwebtext_subset/meta.json \
-       frozen-artifacts/initial.pt \
-       frozen-artifacts/windows.pt \
-       frozen-artifacts/identity.json
 sha256sum -c SHA256SUMS
+cat registration.json
 ```
 
-`git lfs ls-files` 应列出四个大文件，`sha256sum` 的六项均必须为 `OK`。很小且以 `version https://git-lfs.github.com/spec/v1` 开头的 `.bin` 或 `.pt` 是未下载的 LFS 指针，不能用于实验。
+六项必须全部为 `OK`。`registration.json` 中的 `input_id` 是本轮六个 scope 的唯一数据身份。生成后不得再次运行不同代码、改变依赖、覆盖输入文件或为不同 scope 重新抽样；新语料与早先参考语料的绝对 loss 不能逐值比较。
 
-### 4.3 设置实验目录
+### 4.2 设置实验目录
 
-设置绝对路径；`DATA_DIR` 与 `ARTIFACT_DIR` 指向刚下载的两个子目录，`RUN_BASE` 是服务器上的结果根目录：
+设置绝对路径；`DATA_DIR` 与 `ARTIFACT_DIR` 指向已登记的两个子目录，`RUN_BASE` 是服务器上的结果根目录：
 
 ```bash
 cd /data/260010171/nanogpt-noise-experiments
 export DATA_DIR="/data/260010171/inputs/openwebtext_subset"
 export ARTIFACT_DIR="/data/260010171/inputs/frozen-artifacts"
-export RUN_BASE="/data/260010171/results/nanogpt-v1.5"
+export RUN_BASE="/data/260010171/results/nanogpt-v1.6"
 mkdir -p "$RUN_BASE"
 
 ls -lh "$DATA_DIR/train.bin" "$DATA_DIR/val.bin" "$DATA_DIR/meta.json"
@@ -243,13 +222,13 @@ df -B1 "$RUN_BASE"
 数据传输方向可以概括为：
 
 ```text
-实验开始前：私有输入仓库  ->  H100 服务器的 DATA_DIR、ARTIFACT_DIR
+实验开始前：固定 OpenWebText revision -> 一次性生成并登记 DATA_DIR、ARTIFACT_DIR
 实验运行时：H100 服务器在 RUN_DIR 中生成结果
 每个 scope 完成后：服务器 RUN_DIR  ->  约定的持久结果接收位置
 接收端校验通过后：清空服务器上的这个 RUN_DIR，再运行下一个 scope
 ```
 
-`SHA256SUMS` 检查下载传输是否完整；`identity.json` 描述冻结产物身份。下一节的项目级校验还会同时检查数据和冻结产物的逐文件哈希，并输出预期 ID。两层校验都必须通过。
+`SHA256SUMS` 检查六个文件是否变化；`identity.json` 描述数据与冻结产物，`registration.json` 固定本轮 input ID。下一节还会重新计算文件哈希并要求三者一致。
 
 在开始 `full` 前，结果所在文件系统的可用空间应至少为 `200000000000` bytes，并且不能混放上一 scope 的结果。
 
@@ -269,13 +248,7 @@ bash scripts/h100.sh check
 4. 运行完整 CPU 测试；
 5. 输出六个 scope 的存储估算，以及当前结果文件系统的 `df`、`du` 信息。
 
-输入身份必须为：
-
-```text
-9cabd9c54c6d717354f8f6750715f9280c5502f0a85a9032806b9c7956cbd76e
-```
-
-当前版本应显示 55 项测试并在末尾输出 `OK`。这一步验证协议和调度代码，不验证 H100；检查失败时不要启动训练。
+输入身份必须与 `/data/260010171/inputs/registration.json` 的 `input_id` 相同。当前版本应显示 61 项测试并在末尾输出 `OK`。这一步验证协议和调度代码，不验证 H100；检查失败时不要启动训练。
 
 如果需要单独排查某一项，可手动执行底层命令：
 
@@ -323,7 +296,7 @@ tokens_per_step = 524,288
 
 ```bash
 bash scripts/h100.sh status
-python -m json.tool /data/260010171/results/nanogpt-v1.5/smoke/1gpu/full-muon-node10/status.json
+python -m json.tool /data/260010171/results/nanogpt-v1.6/smoke/1gpu/full-muon-node10/status.json
 ```
 
 只有终端显示 `SMOKE PASSED`，且状态为 `status: completed`、`mode: smoke`、`step: 8` 才算通过。脚本会把本次 smoke 的 commit 写入结果根目录；正式 scope 必须使用相同 commit。OOM、`infrastructure_failure` 或 `numerical_failure` 均不通过。不要为了绕过 OOM 擅自修改 micro-batch、模型、噪声、梯度裁剪或正式预算。
@@ -373,7 +346,7 @@ full -> last1 -> last2 -> last3 -> last6 -> last12
 bash scripts/run_acp.sh formal
 ```
 
-不提供参数时默认运行 `full`。脚本自动使用 `/data/260010171/results/nanogpt-v1.5/full` 作为独立结果目录，检查输入、smoke 状态与 commit 一致性，运行或恢复全部 140 个 job，并在任务池成功结束后自动执行 `finalize`。四个 worker 各占一张卡；某张卡完成一个 job 后，从当前 scope 的共享队列领取下一个 job。同一 job 的 8 个 LR 候选始终顺序执行，不会被拆到八张卡并行。
+不提供参数时默认运行 `full`。脚本自动使用 `/data/260010171/results/nanogpt-v1.6/full` 作为独立结果目录，检查输入、smoke 状态与 commit 一致性，运行或恢复全部 140 个 job，并在任务池成功结束后自动执行 `finalize`。四个 worker 各占一张卡；某张卡完成一个 job 后，从当前 scope 的共享队列领取下一个 job。同一 job 的 8 个 LR 候选始终顺序执行，不会被拆到八张卡并行。
 
 只有在独立服务器上、且运行者已经获准使用 0、1、2、3 号卡时，才手动指定：
 
@@ -392,7 +365,7 @@ tmux new -s nanogpt-full
 
 ```bash
 bash scripts/h100.sh status full
-tail -f /data/260010171/results/nanogpt-v1.5/full/launcher/job_0000.log
+tail -f /data/260010171/results/nanogpt-v1.6/full/launcher/job_0000.log
 ```
 
 `status` 只读取现有文件并显示任务、磁盘和目录大小，不会改变训练。单个 job 完成的标志是 `search.json` 中 `complete: true`，且包含 8 个候选记录。
@@ -436,7 +409,7 @@ bash scripts/h100.sh finalize full
 ```bash
 export REMOTE_USER="替换为服务器用户名"
 export REMOTE_HOST="替换为服务器地址"
-export REMOTE_SCOPE_DIR="/scratch/替换为项目目录/results/nanogpt-v1.5/full"
+export REMOTE_SCOPE_DIR="/scratch/替换为项目目录/results/nanogpt-v1.6/full"
 export RECEIVED_SCOPE_DIR="/替换为持久结果根目录/full"
 
 mkdir -p "$RECEIVED_SCOPE_DIR"
@@ -552,7 +525,7 @@ Smoke、不完整任务和无有效 winner 的节点不会伪装成正式有限�
 ```bash
 export DATA_DIR="/data/260010171/inputs/openwebtext_subset"
 export ARTIFACT_DIR="/data/260010171/inputs/frozen-artifacts"
-export RUN_BASE="/data/260010171/results/nanogpt-v1.5"
+export RUN_BASE="/data/260010171/results/nanogpt-v1.6"
 export SCOPE=full
 export RUN_DIR="$RUN_BASE/$SCOPE"
 mkdir -p "$RUN_DIR"
@@ -577,14 +550,14 @@ Slurm 作业号不是实验 job 编号。
 
 | 现象 | 处理 |
 |---|---|
-| `requires a different Python: 3.9` | 使用 `bash scripts/run_acp.sh smoke`，不要在它前面用 base Python 安装项目 |
-| `No module named nanogpt_noise` | 在仓库根目录激活正确环境并运行 `python -m pip install -e '.[plots]'` |
-| `detected dubious ownership` | 说明服务器仍是旧 commit，或绕过了公开入口。先按第 2 节使用一次带准确 `safe.directory` 的 `git pull`，随后运行 `run_smoke.sh` 或 `run_formal.sh`；无需写全局配置 |
+| `requires a different Python: 3.9` | 使用 `bash scripts/run_acp.sh inputs` 或对应 ACP 入口，不要在它前面用 base Python 安装项目 |
+| `No module named nanogpt_noise` | 从仓库根目录使用 `run_acp.sh`，它会安装并复用隔离环境 |
+| `detected dubious ownership` | 说明服务器仍是旧 commit，或绕过了公开入口。先按第 2 节使用一次带准确 `safe.directory` 的 `git pull`，随后运行 `run_acp.sh`；无需写全局配置 |
 | `code worktree is not clean` | 不要带着本地修改运行正式实验；保存必要内容后恢复到约定 commit 的干净工作区 |
 | `smoke commit marker is missing` | 先在一张 H100 上运行 `bash scripts/run_acp.sh smoke`，不要跳过实机验收 |
 | smoke commit 与当前 commit 不同 | 切回通过 smoke 的 commit，或在当前 commit 重新执行 smoke；不要混用两个代码版本 |
 | `CUDA unavailable` | 确认进入 GPU 节点、安装 CUDA 版 PyTorch，检查驱动兼容性 |
-| 输入校验 ID 不同或 `hash mismatch` | 停止运行，重新取得项目提供方给出的完整数据和冻结产物；不要自行重建 |
+| 输入校验 ID 不同或 `hash mismatch` | 立即停止；正式 smoke 后不得重建。保存 `registration.json` 和日志，由维护者判断是文件损坏还是错误目录 |
 | `df -B1` 显示可用空间不足 200000000000 bytes | 不要启动 `full`；改用容量更大的项目盘或先清理已经校验交接的旧 scope |
 | `scope requires exactly four ... tokens` | `CUDA_VISIBLE_DEVICES` 必须恰好列出调度器分配的四张卡 |
 | `belongs to scope ...` | 当前 `RUN_DIR` 已属于另一个 scope；为新 scope 使用新目录 |
@@ -599,7 +572,7 @@ Slurm 作业号不是实验 job 编号。
 
 本 README 是运行与结果交接手册。仓库内的 [实验设计发布快照](docs/nanogpt_experiment_design.md) 说明固定的科学参数；运行者不需要访问仓库之外的文档，也不应自行改动协议。正式结果由 Git commit、候选 metadata、输入身份和 scope manifest 共同标识。
 
-- [scripts/run_acp.sh](scripts/run_acp.sh)：ACP 自动环境准备与 smoke/formal 入口；
+- [scripts/run_acp.sh](scripts/run_acp.sh)：ACP 自动环境准备与 inputs/smoke/formal 入口；
 - [scripts/run_smoke.sh](scripts/run_smoke.sh)：学长的一键单卡 smoke 入口；
 - [scripts/run_formal.sh](scripts/run_formal.sh)：学长的一键四卡正式 scope 入口，成功后自动 finalize；
 - [scripts/h100.sh](scripts/h100.sh)：供维护和排障使用的生命周期工具；
@@ -612,6 +585,6 @@ Slurm 作业号不是实验 job 编号。
 - `nanogpt_noise/analyze.py`：跨多个已下载 scope 的统一汇总；
 - [实现验证记录](docs/VALIDATION.md)：已完成检查和目标硬件待验项目。
 
-两个公开入口不会登录服务器、申请 GPU、激活 Conda/虚拟环境、安装 CUDA 版 PyTorch、执行 `git pull`、传出结果、删除 scope 或因磁盘空间不足自动停止训练。这些操作跨越了不同资源会话或具有破坏性，必须由运行者按本文明确完成。
+公开入口不会登录服务器、申请 GPU、执行 `git pull`、传出结果、删除 scope 或因磁盘空间不足自动停止训练。它会在当前任务内准备隔离的 Python/CUDA PyTorch 环境。跨资源会话或具有破坏性的操作仍必须由运行者按本文明确完成。
 
 模型结构参考 nanoGPT，并保留[原 MIT 声明](third_party/nanogpt-LICENSE)。本仓库不依赖 WandB。底层仍保留 DDP 回归测试，但正式 H100 路径是一张卡运行一个独立任务。

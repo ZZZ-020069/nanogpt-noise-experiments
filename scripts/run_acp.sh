@@ -6,9 +6,9 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd -- "$REPO_ROOT"
 mode="${1:-}"
 case "$mode" in
-  prepare|smoke) (( $# == 1 )) ;;
+  prepare|inputs|smoke) (( $# == 1 )) ;;
   formal) (( $# <= 2 )); case "${2:-full}" in full|last1|last2|last3|last6|last12) ;; *) exit 2;; esac ;;
-  *) echo 'Usage: bash scripts/run_acp.sh prepare|smoke|formal [SCOPE]' >&2; exit 2 ;;
+  *) echo 'Usage: bash scripts/run_acp.sh prepare|inputs|smoke|formal [SCOPE]' >&2; exit 2 ;;
 esac
 
 # Applies to pip's build subprocesses and experiment metadata as well as Git.
@@ -63,6 +63,8 @@ else
   fi
 fi
 export PYTHON
+INPUT_ROOT="${INPUT_ROOT:-/data/260010171/inputs}"
+export INPUT_ROOT
 printf 'ACP Python: %s\n' "$PYTHON"
 "$PYTHON" -c 'import sys,torch,numpy; print("Python:",sys.version); print("torch:",torch.__version__,"CUDA build:",torch.version.cuda,"numpy:",numpy.__version__)'
 # Dependencies were verified above. Do not let editable installation replace
@@ -71,6 +73,11 @@ printf 'ACP Python: %s\n' "$PYTHON"
 printf 'ACP ENVIRONMENT READY\n'
 case "$mode" in
   prepare) ;;
+  inputs)
+    "$PYTHON" -m pip install --no-cache-dir -r requirements-prepare.txt
+    "$PYTHON" -m nanogpt_noise.prepare --input-root "$INPUT_ROOT" --restart-incomplete
+    printf 'INPUT BUNDLE REGISTERED: %s\n' "$INPUT_ROOT"
+    ;;
   smoke) bash scripts/run_smoke.sh ;;
   formal) bash scripts/run_formal.sh "${2:-full}" ;;
 esac

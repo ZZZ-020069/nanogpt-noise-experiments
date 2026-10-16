@@ -1,11 +1,11 @@
-# Implementation validation — 2026-10-12
+# Implementation validation — 2026-10-16
 
 These checks are implementation tests, not research results.
 
 ## Passed locally
 
 - Windows, Python 3.13.5, PyTorch 2.9.1+cpu, NumPy 2.1.3.
-- `python -m unittest discover -s tests -v`: 41 tests passed, including the core protocol, launcher/preflight, independent-GPU pool, scope isolation and retention tests.
+- `python -m unittest discover -s tests -v`: 61 tests passed, including the core protocol, launcher/preflight, independent-GPU pool, scope isolation, retention and server-side input-registration tests.
 - Exact 124,373,760 full-model and 7,079,424 × k trainable parameter counts; tied weights and frozen scopes.
 - Muon formula and 0.03 auxiliary binding; Adam/AdamW/SGD decay; LR-zero optimizer-state update.
 - Noise RMS, clean behavior, independent RNG and missing-gradient errors.
@@ -14,6 +14,7 @@ These checks are implementation tests, not research results.
 - Small-model eight-candidate node controller and idempotent completed-node restart.
 - Numerical failure terminal state, failed-step token accounting, finite-large-loss completion, incompatible resume rejection.
 - Data identity tamper detection and missing response values left missing.
+- Server-side input registration binds the corpus, initialization and fixed windows to one input ID; a changed registered input is rejected after smoke. Token-boundary truncation, immutable registration, completed-bundle reuse and ACP input-mode routing have dedicated tests.
 - Actual fixed corpus metadata/size/token-range/hash checks; common 124M initialization and all window indices generated.
 - Python compile checks, Bash syntax checks, design snapshot synchronization, complete 840-job dry manifest.
 - Empty-result CSV/JSON and 30 heatmap rendering smoke checks (these blank images are not experimental results).
@@ -38,6 +39,6 @@ These checks are implementation tests, not research results.
 - Actual target-filesystem scope peak, filesystem metadata overhead, transfer duration and local-copy verification at full scale; the 195.58 GB `full` estimate has not yet been measured on H100 output.
 - Target-server four-process independent CUDA execution and signal/restart behavior. NCCL is not required by the production pool because every training process has world size one; the retained DDP regression tests remain CPU/Gloo implementation coverage only.
 - Local Windows Gloo: torchrun lacks libuv support; direct FileStore fallback reaches an unsupported Gloo device error. The Linux CI evidence above is separate from local execution.
-- Online data re-preparation and exact reproduction across tokenizer/datasets versions. Existing corpus metadata does not preserve its original preparation dependency versions.
+- Full 1.01B-token preparation from the fixed Hugging Face revision on the target server, including its download duration and cache-space peak. The implementation pins preparation dependencies and records their realized versions, but the complete target-server bundle has not yet been generated.
 
 No full-budget training, formal result, quadratic experiment or automatic Slurm submission was performed. Formal-launch readiness requires the target-hardware checks above.
