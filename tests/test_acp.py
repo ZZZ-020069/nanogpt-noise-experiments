@@ -16,8 +16,8 @@ class AcpTests(unittest.TestCase):
         self.addCleanup(self.context.__exit__, None, None, None)
         self.base = self.results.parent
 
-    def invoke(self, *args):
-        return self.helper.invoke_script(self.root, self.env, 'scripts/run_acp.sh', *args)
+    def invoke(self, *args, visible='0'):
+        return self.helper.invoke_script(self.root, self.env, 'scripts/run_acp.sh', *args, visible=visible)
 
     def test_explicit_runtime_smoke_and_safe_directory(self):
         self.env.update(REQUIRE_SAFE_DIRECTORY='1',
@@ -32,6 +32,28 @@ class AcpTests(unittest.TestCase):
         result = self.invoke('prepare')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn('PY=<nanogpt_noise.train>', result.stderr)
+
+    def test_pause_needs_no_environment_and_waits_for_locks(self):
+        scope=self.results/'last1'
+        scope.mkdir()
+        (scope/'scope_run.json').write_text('{}')
+        self.env['PYTHON']='/missing/python'
+        result=self.invoke('pause','last1')
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertTrue((scope/'pause.request').exists())
+        self.assertNotIn('ACP ENVIRONMENT READY',result.stdout)
+        (scope/'launcher').mkdir()
+        (scope/'launcher/.lock').write_text('stale')
+        self.env['PAUSE_WAIT_SECONDS']='0'
+        result=self.invoke('pause','last1')
+        self.assertEqual(result.returncode,3,result.stdout+result.stderr)
+        self.assertTrue((scope/'launcher/.lock').exists())
+
+    def test_resume_routes_explicit_flag_and_pause_does_not_finalize(self):
+        self.assertEqual(self.invoke('smoke','last1').returncode,0)
+        result=self.invoke('resume','last1',visible='0,1,2,3')
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn('PY=<--resume-paused>',result.stderr)
 
     def test_inputs_installs_preparation_dependencies_and_registers_once(self):
         input_root = self.helper.shell_path(self.base/'generated inputs')

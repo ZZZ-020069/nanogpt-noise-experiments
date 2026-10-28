@@ -1,3 +1,18 @@
+# v1.8 resume maintenance validation — 2026-10-28
+
+The earlier 95-test release missed search-level checkpoint retention on restart. An isolated reproduction showed replay deleting a pending candidate's latest checkpoint and a later final winner. This maintenance change limits pruning to already replayed terminal candidates; it does not change scientific parameters or require regenerating registered v1.8 inputs.
+
+- Windows Python 3.13.5 / PyTorch 2.9.1+cpu: final complete **105-test suite passed in 138.815 seconds**. Log: workspace `timing-evidence/resume-release-tests.log`.
+- New tiny-model tests exercise all four optimizers with candidate 1 paused after candidate 0 completed: pending step survives replay, recovered search decisions/loss and final tensors equal uninterrupted execution, and repeated completed-search startup preserves winner bytes. A separate forced later-winner case protects candidate 7 independently of incidental tiny-model ranking.
+- Cooperative pause tests verify saved-step reuse and exact Muon model/optimizer-state equality after resume. Rollback tests discard uncommitted diagnostics above the saved step; a missing checkpoint after positive progress raises instead of silently restarting.
+- Pool tests cover stopping dispatch even if a current job completes successfully, refusing child creation after stop, holding the launcher lock before clearing a pause request, rejecting an ordinary launch of a paused scope, and a nonzero paused exit.
+- Bash wrapper tests verify pause needs no Python/CUDA environment, waits on outstanding locks without deleting them, and resume forwards the explicit resume flag. Intermediate full runs detected a new test fixture overriding the requested four-GPU visibility; the helper argument was corrected, all 10 ACP tests passed, then the final complete suite above passed. No production GPU-count check was weakened.
+- All Bash syntax checks, Python compilation, authoritative design synchronization and whitespace checks passed. Bash-backed tests ran outside the Windows sandbox due to MSYS initialization restrictions.
+- Real H100 save duration, process termination and pause/resume behavior remain hardware acceptance checks; CPU tests and Linux/Gloo CI are implementation evidence. No real GPU training, corpus preparation or long experiment was started.
+- Keep the same commit/environment/input/micro/output for a trajectory. Existing v1.8 inputs remain usable, but updating from the previous commit requires fresh smoke outputs in a new RUN_BASE before formal training. Previously deleted checkpoints cannot be recovered by this fix.
+
+---
+
 # v1.8 implementation validation — 2026-10-28
 
 The input workflow now prepares a fresh bundle on the target server. The 35-node, eight-candidate, 2B-token budget and last1-first execution are unchanged. Records below this section describe earlier releases, including the removed migration route.

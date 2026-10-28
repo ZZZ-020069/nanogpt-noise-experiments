@@ -83,13 +83,16 @@ def compact_steps(candidate):
     return manifest
 
 
-def retain_winner_checkpoint(job_directory, winner):
-    """Keep only the winner's final checkpoint; remove known transient files."""
+def retain_winner_checkpoint(job_directory, winner, *, completed):
+    """Prune only replayed terminal candidates, never later or active candidates."""
     job_directory = Path(job_directory)
+    completed = set(completed)
     for candidate in sorted(job_directory.glob('candidate_[0-9][0-9]')):
         try:
             index = int(candidate.name.split('_')[1])
         except (IndexError, ValueError):
+            continue
+        if index not in completed:
             continue
         for name in CHECKPOINTS:
             if index == winner and name == 'final.pt':

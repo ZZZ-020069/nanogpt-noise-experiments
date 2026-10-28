@@ -17,11 +17,13 @@ def run_node(job,data,artifacts,output,micro=4,runtime=None,test=False):
         rt.barrier()
         records=[]
         for index in range(8):
+            if (output.parent/'pause.request').exists():
+                return dict(status='infrastructure_failure',reason='scope pause requested')
             candidate=propose(records)
             config=configuration(job['scope'],job['optimizer'],job['node'],candidate['x'])
             config['proposal']=candidate
             result=run(config,data,artifacts,output/f'candidate_{index:02d}',micro=micro,
-                       runtime=rt,test=test)
+                       runtime=rt,test=test,pause_file=output.parent/'pause.request')
             if result['status']=='infrastructure_failure':
                 return result
             records.append(dict(**candidate,status=result['status'],loss=result.get('loss'),
@@ -32,8 +34,11 @@ def run_node(job,data,artifacts,output,micro=4,runtime=None,test=False):
                 write_json(output/'search.json',dict(job=job,mode='test' if test else 'formal',**summary))
                 compact_steps(output/f'candidate_{index:02d}')
                 winner=summary['winner']['candidate'] if summary['winner'] else None
-                retain_winner_checkpoint(output,winner)
+                retain_winner_checkpoint(output,winner,completed=[r['candidate'] for r in records])
             rt.barrier()
+        winner=summary['winner']['candidate'] if summary['winner'] else None
+        if winner is not None and not (output/f'candidate_{winner:02d}'/'final.pt').is_file():
+            raise RuntimeError('final winner checkpoint is missing; preserve outputs for diagnosis')
         return summarize(records)
 
 

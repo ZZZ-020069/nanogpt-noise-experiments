@@ -7,9 +7,16 @@ cd -- "$REPO_ROOT"
 mode="${1:-}"
 case "$mode" in
   prepare|inputs) (( $# == 1 )) ;;
-  smoke|formal) (( $# <= 2 )); case "${2:-last1}" in full|last1|last2|last3|last6|last12) ;; *) exit 2;; esac ;;
-  *) echo 'Usage: bash scripts/run_acp.sh prepare|inputs|smoke|formal [SCOPE]' >&2; exit 2 ;;
+  smoke|formal|pause|resume) (( $# <= 2 )); case "${2:-last1}" in full|last1|last2|last3|last6|last12) ;; *) exit 2;; esac ;;
+  *) echo 'Usage: bash scripts/run_acp.sh prepare|inputs|smoke|formal|pause|resume [SCOPE]' >&2; exit 2 ;;
 esac
+if [[ "$mode" == pause ]]; then
+  exec bash scripts/pause.sh "${2:-last1}"
+fi
+if [[ "$mode" == resume ]]; then
+  export NANOGPT_RESUME_PAUSED=1
+  mode=formal
+fi
 
 # Applies to pip's build subprocesses and experiment metadata as well as Git.
 index="${GIT_CONFIG_COUNT:-0}"

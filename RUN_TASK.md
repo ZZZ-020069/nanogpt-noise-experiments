@@ -49,7 +49,27 @@ bash scripts/run_acp.sh formal last1
 
 已有兼容环境的等价入口：`bash scripts/run_last1.sh`。中断后使用相同 commit、输入、软件环境、micro-batch 和输出目录重新运行同一命令。micro 默认 4；全局 batch 始终为 512×1024 tokens。禁止为恢复而改 metadata、预算或学习率。
 
-## 5. 下载并分析后再决定下一步
+## 5. 暂停与继续
+
+学长需要临时用卡时，在另一终端进入相同仓库并保持相同 RUN_BASE：
+
+```bash
+bash scripts/run_acp.sh pause last1
+```
+
+等待 `SCOPE QUIESCENT`，确认训练进程已退出后再交出GPU。正在运行的候选会完成当前步并保存，之后不再领取新任务。默认等待300秒；超时保留暂停请求，不强杀，也不代表已经释放GPU。训练端的75退出码属于可恢复暂停，可能显示 ACP FAILED，不是优化器数值失败。
+
+重新获得四张GPU后，用相同代码、软件环境、输入、micro和结果目录继续：
+
+```bash
+bash scripts/run_acp.sh resume last1
+```
+
+无需再次制备输入；完成候选不重训，未完成候选从checkpoint接续。断电/强制终止时通常最多重算最近约191步，遗留.lock需先确认无活跃进程再人工处理。输入与结果必须放在平台暂停/销毁任务后仍持久保存的目录；仅关闭临时容器但丢失磁盘不能恢复。
+
+v1.8断点修复保留输入身份，旧版已登记输入可以继续使用；更新代码后应在正式运行前重新smoke。不能把旧代码训练轨迹直接改metadata迁成新轨迹。
+
+## 6. 下载并分析后再决定下一步
 
 结果在 `/data/260010171/results/nanogpt-v1.8/last1`。下载整个目录并核验 `scope_manifest.json`；本机接收目录固定放 D 盘，例如：
 
@@ -60,3 +80,13 @@ D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8\last1
 不要先下载到 C 盘，也不要在服务器另建一份大型压缩包。校验成功前保留服务器结果；目前没有自动清理或自动开展下一 scope 的安排。
 
 更详细的存储、恢复、Slurm 与结果校验见 [README.md](README.md)。
+
+
+升级本次断点修复时，如果此前已经运行过旧提交的 smoke，请保留旧结果并先选择新结果目录，再冒烟；之后所有启动、暂停、继续命令均使用这个 RUN_BASE：
+
+```bash
+export RUN_BASE=/data/260010171/results/nanogpt-v1.8-resume-fix
+bash scripts/run_acp.sh smoke last1
+```
+
+已登记的 INPUT_ROOT 不变，无需重新制备语料；正式开始后固定提交，不能靠切换 RUN_BASE 把旧轨迹恢复成新代码轨迹。

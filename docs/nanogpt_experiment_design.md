@@ -528,9 +528,11 @@ metadata 包括设计版本、代码/配置哈希、数据和初始权重哈希�
 
 ### 10.3 Checkpoint 与断点恢复
 
-候选运行期间只维护一个可恢复的 `latest`，每次评估后采用原子写入；完整预算结束时将最后一次 `latest` 原子重命名为 `final`，不另存 `best`，LR 选择仍只看完整预算末尾 loss。Checkpoint 包含模型、全部优化器及辅助组状态、scheduler/step/tokens、随机流状态或可重建索引、配置和数据身份。只从同一候选的 `latest` 接续；跨 scope、optimizer、噪声节点或 LR 不共享训练后 checkpoint。
+候选运行期间只维护一个可恢复的 `latest`，每次评估后采用原子写入；完整预算结束时将最后一次 `latest` 原子重命名为 `final`，不另存 `best`，LR 选择仍只看完整预算末尾 loss。Checkpoint 包含模型、全部优化器及辅助组状态、scheduler/step/tokens、随机流状态或可重建索引、配置和数据身份。只从同一候选的 `latest` 接续；若最终原子重命名已完成但终态尚未落盘，可从同候选 `final` 补齐终态。跨 scope、optimizer、噪声节点或 LR 不共享训练后 checkpoint。搜索恢复重放历史候选时，只允许清理已重放并核对的终态候选，严禁清理后续候选的 latest/final；最终 winner 文件必须存在。
 
 一个 optimizer/noise/scope 配置完成每个候选并持久化搜索记录后，只保留当前 winner 的一个 `final` checkpoint；非 winner 的 `latest`、`final` 和数值失败 checkpoint 均删除。后续候选改变 winner 时同步删除旧 winner checkpoint。八个候选结束后，最终 winner 保留模型与完整优化器/辅助组状态，便于后续诊断和严格恢复；若八个候选全部数值失败，则不保留 checkpoint。删除 checkpoint 不删除任何候选的 metadata、状态、评估曲线、搜索记录或无损压缩诊断。成功的 winner 直接使用已完成轨迹，无需再次跑相同 seed。
+
+主动暂停通过 scope 的 pause.request 请求完成：停止分配新任务，运行中的候选在完整 optimizer step 后保存并退出；独占 launcher 锁直到所有子进程退出。暂停命令等待锁释放，超时只报告未完成，不强杀或自动删除锁。显式 resume 获取独占锁后才清除暂停请求，再按同一候选继续。断电、SIGKILL 或硬件故障只能回退到最近持久 checkpoint，正常周期约100M tokens、至多191步；只重算活跃候选的未保存区间，不重训已完成候选。回退时清除 checkpoint 之后的未提交诊断，并恢复其评估列表；有正训练进度却缺少 checkpoint 时拒绝静默从零开始。输入与结果必须保存在暂停/任务销毁后仍保留的存储上；遗留锁需确认无活跃进程后人工处理。
 
 ### 10.4 交付物与实现约束
 
@@ -907,6 +909,16 @@ last1 每个 optimizer/noise job 的八次搜索均独立从共同未训练初�
 “重新制备”仅发生于本轮正式 smoke 之前一次，不是每次启动都重新生成。已登记目录重复执行 inputs 时只验证文件、身份与协议；全部候选及未来其他 scope 共用同一 input ID。制备中断仅可在本版本标记目录内重试；明确的 .incomplete 语料可从源重做，半写入的最终语料或冻结产物需保留诊断并改用新空目录。根目录锁阻止并发制备。正式训练开始后不得更换输入；旧 smoke/checkpoint 不能用于本版本验收或恢复。
 
 准备过程需服务器直接访问数据源与软件源，不依赖本机上传。输入文件静态合计约 2.53 GB；last1 结果、写入余量及公共输入/日志的静态估算约 84.03 GB，另加四项 smoke checkpoint 约 2.16 GB；环境和下载缓存另计，200 GB 可用空间须结合这些实际占用确认。HF_HOME、ENV_PREFIX 可指定相应存储位置；流式读取不等于零缓存。未实际下载语料或启动 GPU 任务；服务器生成后须据实记录新 input ID、六文件哈希与 smoke 结果。
+
+---
+
+### 12.12 v1.8 断点恢复实现修复 — 2026-10-28
+
+审计确认旧代码在搜索重放早期候选时，winner-only 清理遍历全部候选，可能删除尚未恢复的 later latest 或最终 winner；旧单条候选续训测试未覆盖此情形。修复将删除范围限制为已经核对的终态候选，并增加多候选中断恢复与完整搜索重复启动的文件保留检查。增加 scope 暂停文件、调度器独占锁和显式暂停/继续入口；未改变研究参数、输入制备版本、学习率选择或 checkpoint 周期。
+
+操作入口为 `bash scripts/run_acp.sh pause last1` 与 `bash scripts/run_acp.sh resume last1`。pause 无需安装依赖或申请 GPU，等到活跃任务保存退出后才报告静止；resume 仍检查输入、代码、软件、micro 与 smoke 身份。默认暂停等待300秒，可用 PAUSE_WAIT_SECONDS 调整；超时保留请求，由运行者检查日志和锁，不能认为已释放GPU。机器突发故障后可能残留锁，不自动清锁。
+
+本修复保留 v1.8 输入身份，已成功制备的输入可复用；代码/主设计哈希变化，因此正式运行前应使用修复提交重新冒烟。不能修改旧运行 metadata 绕过身份检查，已经被旧版误删的 checkpoint 也不能凭空恢复。CPU恢复与调度测试和目标H100暂停恢复验收须区分；本次不启动真实训练。
 
 ---
 

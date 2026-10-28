@@ -47,12 +47,12 @@ class StorageTests(unittest.TestCase):
             for name in ('latest.pt', 'best.pt', 'final.pt', 'failure.pt'):
                 (candidate/name).write_bytes(f'{index}-{name}'.encode())
 
-        retain_winner_checkpoint(job, 1)
+        retain_winner_checkpoint(job, 1, completed=range(3))
         self.assertEqual(
             sorted(path.relative_to(job).as_posix() for path in job.rglob('*.pt')),
             ['candidate_01/final.pt'])
 
-        retain_winner_checkpoint(job, None)
+        retain_winner_checkpoint(job, None, completed=range(3))
         self.assertEqual(list(job.rglob('*.pt')), [])
 
 

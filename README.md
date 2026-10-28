@@ -83,7 +83,7 @@ GPU由平台分配；CUDA_VISIBLE_DEVICES必须列出四个不同的GPU编号/UU
 
 `python -m nanogpt_noise.scope estimate --scope last1` 输出静态空间估算，smoke和首批任务还需核验真实文件大小。last1静态峰值约84.03GB；full峰值约195.58GB，不能把该值理解为last1实际使用量；该84.03GB已含公共输入/日志4GB预留，另加四项smoke checkpoint约2.16GB；环境、下载缓存及接收端空间另计。脚本报告空间，不自动设置磁盘阈值。
 
-中断后使用相同commit、环境、输入、scope、micro与RUN_BASE重跑同一启动命令。完成候选复用终态，未完成候选恢复latest.pt。NaN/Inf保留明确失败标签并继续搜索；OOM/存储/硬件错误属于基础设施故障，恢复同一候选，不能换LR规避。如果smoke后改变代码、环境或micro，使用新的RUN_BASE重新冒烟；不要覆盖旧输出。旧2.6B、旧pilot及旧smoke不能迁入新结果目录，也不能修改metadata绕过身份检查。
+中断后使用相同commit、环境、输入、scope、micro与RUN_BASE恢复。主动暂停后用 resume；意外中断且无暂停请求时可重跑 formal。完成候选复用终态，未完成候选恢复latest.pt。NaN/Inf保留明确失败标签并继续搜索；OOM/存储/硬件错误属于基础设施故障，恢复同一候选，不能换LR规避。如果smoke后改变代码、环境或micro，使用新的RUN_BASE重新冒烟；不要覆盖旧输出。旧2.6B、旧pilot及旧smoke不能迁入新结果目录，也不能修改metadata绕过身份检查。
 
 进度查看（默认目录）：
 
@@ -92,7 +92,20 @@ bash scripts/h100.sh status last1
 tail -f /data/260010171/results/nanogpt-v1.8/last1/launcher/job_0140.log
 ```
 
-若使用nohup，应将控制台日志放在RUN_BASE之外或其父目录并使用绝对路径；平台任务中通常直接用上述启动命令。停止任务时给进程树SIGTERM，让活跃候选保存状态；硬杀可能留下.lock，只有确认无活跃进程后才可处理遗留锁。恢复期间不得更新代码或依赖。
+主动暂停（另开终端，设置与训练相同的 RUN_BASE）：
+
+```bash
+bash scripts/run_acp.sh pause last1
+# 等待 SCOPE QUIESCENT 后再将 GPU 交给其他人。
+# 算力恢复后，在相同代码/环境/输入/输出下：
+bash scripts/run_acp.sh resume last1
+```
+
+pause 停止分配新任务，并让活跃候选完成当前 optimizer step、保存完整状态后退出；不会重新制备输入。暂停文件保留到显式 resume，后者只在获得独占调度锁后清除请求。pause 不安装依赖，不要求 CUDA；默认等待300秒，PAUSE_WAIT_SECONDS可调整，超时不会强杀进程，也不表示GPU已经空闲。训练端以75结束属于可恢复暂停，包装器可能打印 ACP FAILED，但不是数值发散，也不会执行finalize。
+
+断电、SIGKILL或硬件错误可丢失最近一次周期checkpoint之后的进度，通常最多重算约191步/100M tokens。已完成候选和后续候选断点在搜索重放时保留。硬杀可能留下launcher、job或candidate的.lock；先确认所有相关进程都已退出，再处理对应遗留锁，程序不自动解锁。有进度但checkpoint缺失或最终winner缺失会报错，不静默从零开始。
+
+输入、结果与环境必须放在平台停止/销毁任务后仍保留的目录。若使用nohup，将控制台日志放在RUN_BASE之外或其父目录并使用绝对路径；平台任务中通常直接用启动命令。恢复期间不得更新代码或依赖。此修复不改变v1.8输入，可复用已制备输入；从旧提交升级须在正式训练前重新冒烟，不能直接改已有轨迹的metadata来兼容新代码。
 
 ## 完成与下载
 
@@ -121,3 +134,13 @@ python -m nanogpt_noise.analyze --runs /data/260010171/results/nanogpt-v1.8/last
 本地验证：`python -m unittest discover -s tests -v`；工作区设计同步：`python scripts/check_design.py`（独立clone需用--source指定权威主文档）。[验证记录](docs/VALIDATION.md)区分CPU检查与尚待执行的目标GPU验收。可选联合pilot和双RTX测速不是本轮last1正式启动步骤；新版pilot使用独立2B身份，旧pilot结果保留其原协议标签。
 
 模型参考nanoGPT，保留[MIT声明](third_party/nanogpt-LICENSE)；无WandB依赖。
+
+
+升级本次断点修复时，如果此前已经运行过旧提交的 smoke，请保留旧结果并先选择新结果目录，再冒烟；之后所有启动、暂停、继续命令均使用这个 RUN_BASE：
+
+```bash
+export RUN_BASE=/data/260010171/results/nanogpt-v1.8-resume-fix
+bash scripts/run_acp.sh smoke last1
+```
+
+已登记的 INPUT_ROOT 不变，无需重新制备语料；正式开始后固定提交，不能靠切换 RUN_BASE 把旧轨迹恢复成新代码轨迹。

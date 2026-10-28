@@ -102,7 +102,7 @@ def evaluate(model, arrays, indices, budget, micro, rt):
 
 
 def run(config, data, artifacts, output, *, micro=4, runtime=None,
-        smoke_steps=None, test=False, pause_after=None):
+        smoke_steps=None, test=False, pause_after=None, pause_file=None):
     rt = runtime or Runtime(cpu=test)
     output, data, artifacts = Path(output),Path(data),Path(artifacts)
     mode = 'test' if test else ('smoke' if smoke_steps is not None else 'formal')
@@ -110,10 +110,10 @@ def run(config, data, artifacts, output, *, micro=4, runtime=None,
         raise ValueError('CPU outputs cannot be formal or H100 smoke results')
     with lock(output) if rt.rank==0 else contextlib.nullcontext():
         rt.barrier()
-        return _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after)
+        return _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,pause_file)
 
 
-def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after):
+def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,pause_file=None):
     # Every rank checks identity: mismatched node-local data must not silently train.
     ident = verify(data,artifacts)
     if ident['tiny'] != (mode=='test'):
@@ -136,6 +136,7 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after):
     metadata_path = output/'metadata.json'
     if metadata_path.exists() and read_json(metadata_path)['run_id'] != identity:
         raise ValueError('refusing incompatible resume/output reuse: config, data, code or layout changed')
+    previous = {}
     if (output/'status.json').exists():
         previous = read_json(output/'status.json')
         if previous['status'] in ('completed','numerical_failure'):
@@ -177,6 +178,16 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after):
         model.load_state_dict(state['model'])
         bundle.load_state_dict(state['optimizer'])
         step,processed,best,evaluations = state['step'],state['tokens'],state['best'],state['evaluations']
+    elif previous.get('step',0)>0 or any((output/'steps').glob('*.json')):
+        raise RuntimeError('checkpoint missing after training progress; refusing to restart from zero')
+    # A hard interruption can leave diagnostics beyond the durable checkpoint.
+    # These updates will be replayed; do not let stale records survive a later failure.
+    if rt.rank==0:
+        for path in (output/'steps').glob('*.json'):
+            if path.stem.isdigit() and int(path.stem)>step:
+                path.unlink()
+        if evaluations:
+            write_json(output/'evaluations.json',evaluations)
     # Keep bucket layout fixed across construction/resume. Default DDP rebuilds
     # buckets after its first backward; a fresh resumed reducer would otherwise
     # use a different reduction order than an uninterrupted warmed-up reducer.
@@ -239,6 +250,10 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after):
         if not evaluations:
             checkpoint_evaluation()
         while step<target:
+            if rt.any(interrupted[0] or (pause_file is not None and Path(pause_file).exists())):
+                if rt.rank==0:
+                    save_checkpoint(latest,snapshot())
+                return status('infrastructure_failure',reason='paused; resume same candidate')
             bundle.zero_grad()
             lr = config['peak_lr']*budget.multiplier(step*budget.step_tokens)
             bundle.set_lr(lr)
@@ -287,7 +302,8 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after):
                           f"elapsed={time.monotonic()-started:.1f}s", flush=True)
             if budget.evaluate_at(step) or step==target:
                 checkpoint_evaluation()
-            stop = rt.any(interrupted[0] or (pause_after is not None and step>=pause_after))
+            stop = rt.any(interrupted[0] or (pause_after is not None and step>=pause_after)
+                          or (pause_file is not None and Path(pause_file).exists()))
             if stop and step<target:
                 if rt.rank==0:
                     save_checkpoint(latest,snapshot())

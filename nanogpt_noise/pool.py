@@ -8,9 +8,10 @@ import signal
 import subprocess
 import sys
 import threading
+from .artifacts import lock
 
 
-def run_pool(jobs, gpus, runner, on_failure=None):
+def run_pool(jobs, gpus, runner, on_failure=None, stop_requested=None):
     """Run each job once; an idle GPU claims the next queued job."""
     jobs = list(jobs)
     gpus = list(gpus)
@@ -25,13 +26,16 @@ def run_pool(jobs, gpus, runner, on_failure=None):
     failures = []
     failure_lock = threading.Lock()
 
+    def stopping():
+        return stop.is_set() or (stop_requested is not None and stop_requested())
+
     def worker(gpu):
-        while not stop.is_set():
+        while not stopping():
             try:
                 job = pending.get_nowait()
             except queue.Empty:
                 return
-            if stop.is_set():
+            if stopping():
                 pending.task_done()
                 return
             try:
@@ -61,12 +65,14 @@ def run_pool(jobs, gpus, runner, on_failure=None):
 
 
 class SubprocessRunner:
-    def __init__(self, args, log_dir):
+    def __init__(self, args, log_dir, stop_requested=None):
         self.args = args
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.active = set()
         self.lock = threading.Lock()
+        self.stop_requested = stop_requested or (lambda: False)
+        self.stopping = threading.Event()
 
     def __call__(self, gpu, job):
         path = self.log_dir / f'job_{job:04d}.log'
@@ -80,9 +86,11 @@ class SubprocessRunner:
         with path.open('a', encoding='utf-8') as log:
             log.write(f'\n[{stamp}] GPU token {gpu}: {command!r}\n')
             log.flush()
-            process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
-                                       env=env)
             with self.lock:
+                if self.stopping.is_set() or self.stop_requested():
+                    return 75
+                process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
+                                           env=env)
                 self.active.add(process)
             try:
                 code = process.wait()
@@ -93,6 +101,7 @@ class SubprocessRunner:
         return code
 
     def terminate_all(self):
+        self.stopping.set()
         with self.lock:
             processes = list(self.active)
         for process in processes:
@@ -110,6 +119,7 @@ def main():
     parser.add_argument('--artifacts', required=True)
     parser.add_argument('--output', required=True)
     parser.add_argument('--micro-batch', type=int, default=4)
+    parser.add_argument('--resume-paused', action='store_true')
     args = parser.parse_args()
     if not (0 <= args.start <= args.end <= 839):
         parser.error('job interval must satisfy 0 <= start <= end <= 839')
@@ -117,8 +127,21 @@ def main():
     if len(gpus) != 4 or len(set(gpus)) != 4:
         parser.error('--gpus must contain exactly four unique tokens')
 
-    runner = SubprocessRunner(args, Path(args.output) / 'launcher')
+    with lock(Path(args.output)/'launcher'):
+        serve(args, gpus)
+
+
+def serve(args, gpus):
+    """Called only while owning the scope's launcher lock."""
+    pause_file = Path(args.output)/'pause.request'
+    if args.resume_paused:
+        pause_file.unlink(missing_ok=True)
+    elif pause_file.exists():
+        raise RuntimeError('scope is paused; use bash scripts/run_acp.sh resume SCOPE')
     interrupted = threading.Event()
+    def stopping():
+        return interrupted.is_set() or pause_file.exists()
+    runner = SubprocessRunner(args, Path(args.output)/'launcher',stop_requested=stopping)
 
     def stop(signum, _frame):
         interrupted.set()
@@ -127,9 +150,15 @@ def main():
 
     previous = {number: signal.signal(number, stop)
                 for number in (signal.SIGINT, signal.SIGTERM)}
+    def stop_on_failure():
+        if not pause_file.exists():
+            runner.terminate_all()
     try:
         failures = run_pool(range(args.start, args.end + 1), gpus, runner,
-                            on_failure=runner.terminate_all)
+                            on_failure=stop_on_failure,stop_requested=stopping)
+        if pause_file.exists():
+            print('SCOPE PAUSED: all worker processes exited; checkpoints retained',flush=True)
+            raise SystemExit(75)
         if interrupted.is_set():
             raise SystemExit(130)
         if failures:

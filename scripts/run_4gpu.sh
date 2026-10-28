@@ -98,8 +98,10 @@ if [[ "$MODE" == queue || "$MODE" == scope ]]; then
   fi
   printf 'FOUR-GPU POOL: jobs %s..%s; one independent job per GPU. Output: %s\n' \
     "$START_JOB" "$END_JOB" "$RUN_DIR"
+  RESUME_ARGS=()
+  if [[ "${NANOGPT_RESUME_PAUSED:-0}" == 1 ]]; then RESUME_ARGS=(--resume-paused); fi
   exec "$PYTHON" -m nanogpt_noise.pool "${COMMON[@]}" --output "$RUN_DIR" \
-    --start "$START_JOB" --end "$END_JOB" --gpus "$VISIBLE_GPU_LIST"
+    --start "$START_JOB" --end "$END_JOB" --gpus "$VISIBLE_GPU_LIST" "${RESUME_ARGS[@]}"
 fi
 
 GPU_SLOT="${GPU_SLOT:-0}"
