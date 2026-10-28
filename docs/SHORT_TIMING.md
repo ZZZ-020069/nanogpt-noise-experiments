@@ -1,7 +1,7 @@
 # Two-GPU short timing test
 
 This is a performance smoke test, not a convergence pilot or formal experiment.
-It uses the current v1.7 124M trainer, last1 scope by default, micro-batch 4, global batch 512
+It uses the current v1.8 124M trainer, last1 scope by default, micro-batch 4, global batch 512
 sequences, BF16, no clipping, and node 10 (sigma1=0.03, sigma2=0.01).
 Two independent workers run AdamW/Muon, then Adam/SGD, for 20 steps each.
 The current 2B LR schedule is retained; short smoke results do not establish
@@ -24,7 +24,7 @@ Put benchmark_time.py and benchmark_time.sh in this repository's scripts folder.
 Activate the existing CUDA Python environment, enter the repository, and run:
 
 ```bash
-INPUT_ROOT=/data/260010171/inputs-v1.7 bash scripts/benchmark_time.sh
+INPUT_ROOT=/data/260010171/inputs-v1.8 bash scripts/benchmark_time.sh
 ```
 
 If inputs live elsewhere, replace INPUT_ROOT with their parent directory. Set

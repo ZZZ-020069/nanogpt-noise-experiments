@@ -51,8 +51,9 @@ class PreflightTests(unittest.TestCase):
         with patch.object(preflight, 'verify', return_value={'tiny': True}):
             with self.assertRaisesRegex(ValueError, 'tiny'):
                 preflight.check_inputs('data', 'artifacts')
-        identity = dict(design='v1.7', tiny=False, budget=train.asdict(train.Budget()),
-                        shape=train.asdict(train.Shape()), id='example')
+        identity = dict(design='v1.8', tiny=False, budget=train.asdict(train.Budget()),
+                        shape=train.asdict(train.Shape()), id='example',
+                        meta=dict(input_policy='server-fresh-v1', preparation_design='v1.8'))
         with patch.object(preflight, 'verify', return_value=identity):
             self.assertEqual(preflight.check_inputs('data', 'artifacts'), 'example')
         identity['budget']['batch'] = 8

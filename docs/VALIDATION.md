@@ -1,4 +1,18 @@
-# v1.7 implementation validation — 2026-10-28
+# v1.8 implementation validation — 2026-10-28
+
+The input workflow now prepares a fresh bundle on the target server. The 35-node, eight-candidate, 2B-token budget and last1-first execution are unchanged. Records below this section describe earlier releases, including the removed migration route.
+
+- Windows Python 3.13.5 / PyTorch 2.9.1+cpu: all 95 tests passed in 80.970 seconds. Fifteen focused input/protocol/smoke-gate tests also passed before the complete suite.
+- Fresh-preparation tests cover empty-root ownership, rejection and preservation of existing files, interrupted preparation retry, concurrent-writer rejection, immutable registered-bundle reuse, and rejection of old or migrated input identities.
+- A mocked dataset stream verifies the pinned source revision, streaming/shuffle settings, 10M validation then 1B training quotas and fresh-source metadata. It does not download the real corpus. Tiny CPU integration tests separately cover freezing, registration, tamper detection and optimizer/resume behavior.
+- ACP routing tests reject the removed migration command before installation or training. Current input routing, smoke and formal-launch regression tests pass using process stubs.
+- All Bash scripts passed syntax checks; Python compilation and authoritative design/snapshot synchronization passed. Bash-backed tests ran outside the Windows sandbox because MSYS initialization is unavailable inside it.
+- Production Hugging Face access, full preparation duration/cache peak, H100 BF16 smoke, actual storage usage and four-GPU throughput remain target-server checks. No real corpus preparation or GPU training was started for this change.
+- CI results for this release are recorded by the pushed commit's GitHub Actions run; the older evidence below does not certify v1.8.
+
+---
+
+# v1.7 implementation validation — 2026-10-28 (historical)
 
 Current release applies 35 nodes, five initial plus three adaptive LR candidates, and a true 3815-step / 2,000,158,720-token schedule to every scope. The current operator entrypoint defaults to last1 and never chains scopes.
 

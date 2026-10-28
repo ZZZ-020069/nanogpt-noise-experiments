@@ -1,14 +1,14 @@
 """Prepare and freeze one deterministic OpenWebText input realization."""
 import argparse
+from dataclasses import asdict
 import importlib.metadata
 import os
 from pathlib import Path
 import numpy as np
-from .artifacts import write_json,lock
+from .artifacts import write_json,read_json,lock
 from .data import REVISION, freeze
 from .input_bundle import register_bundle, verify_bundle
-from .artifacts import read_json
-from .protocol import require_current_input
+from .protocol import Budget, VERSION, INPUT_POLICY, require_current_input
 
 
 def fill(stream,encoder,path,count):
@@ -36,6 +36,9 @@ def prepare_corpus(output, restart_incomplete=False):
     output=Path(output)
     complete=tuple(output/name for name in ('train.bin','val.bin','meta.json'))
     if all(path.is_file() for path in complete):
+        meta = read_json(output/'meta.json')
+        if meta.get('input_policy') != INPUT_POLICY or meta.get('preparation_design') != VERSION:
+            raise ValueError('existing corpus is not from this fresh preparation; use a new INPUT_ROOT')
         return
     if any(path.exists() for path in complete):
         raise RuntimeError('partial final corpus found; preserve it for diagnosis and use a fresh input root')
@@ -55,7 +58,8 @@ def prepare_corpus(output, restart_incomplete=False):
         train=fill(stream,encoder,output/'train.bin.incomplete',1_000_000_000)
         for split in ('val','train'):
             os.replace(output/f'{split}.bin.incomplete',output/f'{split}.bin')
-        write_json(output/'meta.json',dict(source_dataset='Skylion007/openwebtext',source_revision=REVISION,
+        write_json(output/'meta.json',dict(input_policy=INPUT_POLICY, preparation_design=VERSION,
+                   source_dataset='Skylion007/openwebtext',source_revision=REVISION,
                    source_split='train',streaming=True,shuffle_seed=2357,shuffle_buffer=10000,
                    tokenizer='tiktoken:gpt2',vocab_size=encoder.n_vocab,eot_token=encoder.eot_token,
                    dtype='uint16',validation=val,train=train,
@@ -65,16 +69,27 @@ def prepare_corpus(output, restart_incomplete=False):
 
 def prepare_bundle(input_root, restart_incomplete=False):
     root=Path(input_root)
-    registration=root/'registration.json'
-    if registration.exists():
-        input_id = verify_bundle(root)
-        require_current_input(read_json(root/'frozen-artifacts'/'identity.json'))
-        return input_id
-    data=root/'openwebtext_subset'
-    artifacts=root/'frozen-artifacts'
-    prepare_corpus(data,restart_incomplete=restart_incomplete)
-    freeze(data,artifacts)
-    return register_bundle(root)
+    # Own the entire preparation, including the gap between corpus and artifacts.
+    with lock(root):
+        marker = root/'preparation.json'
+        expected = dict(schema=1, policy=INPUT_POLICY, design=VERSION,
+                        source_revision=REVISION, budget=asdict(Budget()))
+        if marker.exists():
+            if read_json(marker) != expected:
+                raise ValueError('preparation protocol changed; use a fresh INPUT_ROOT')
+        else:
+            if any(path.name != '.lock' for path in root.iterdir()):
+                raise ValueError('fresh preparation requires an empty INPUT_ROOT; existing files are preserved')
+            write_json(marker, expected)
+        if (root/'registration.json').exists():
+            input_id = verify_bundle(root)
+            require_current_input(read_json(root/'frozen-artifacts'/'identity.json'))
+            return input_id
+        data=root/'openwebtext_subset'
+        artifacts=root/'frozen-artifacts'
+        prepare_corpus(data,restart_incomplete=restart_incomplete)
+        freeze(data,artifacts)
+        return register_bundle(root)
 
 
 def main():

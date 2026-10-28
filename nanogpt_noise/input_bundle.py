@@ -22,7 +22,8 @@ def _paths(input_root, data=None, artifacts=None):
 def _registration(identity):
     meta = identity['meta']
     provenance_keys = ('source_dataset','source_revision','source_split','tokenizer',
-                       'shuffle_seed','shuffle_buffer','dependencies')
+                       'shuffle_seed','shuffle_buffer','dependencies',
+                       'input_policy','preparation_design')
     return dict(schema=1, input_id=identity['id'], design=identity['design'],
                 provenance={key:meta.get(key) for key in provenance_keys},
                 lengths=identity['lengths'], data=identity['data'],

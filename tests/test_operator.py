@@ -198,7 +198,7 @@ class OperatorScriptTests(unittest.TestCase):
             for command in ('check', 'smoke', 'scope', 'finalize', 'status'):
                 self.assertIn(command, result.stdout)
             self.assertIn('INPUT_ROOT=/data/260010171/inputs', result.stdout)
-            self.assertIn('RUN_BASE=/data/260010171/results/nanogpt-v1.7', result.stdout)
+            self.assertIn('RUN_BASE=/data/260010171/results/nanogpt-v1.8', result.stdout)
             self.assertNotIn('260010189', result.stdout)
 
     def test_public_smoke_and_formal_shortcuts(self):
@@ -240,7 +240,7 @@ class OperatorScriptTests(unittest.TestCase):
             (run_base.parent/'inputs'/'registration.json').unlink()
             result = self.invoke(root, env, 'check')
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn('migrate old inputs', self.combined(result))
+            self.assertIn('fresh INPUT_ROOT', self.combined(result))
 
     def test_public_smoke_handles_repository_owner_mismatch(self):
         with self.fixture() as (root, _run_base, _run_base_shell, env):

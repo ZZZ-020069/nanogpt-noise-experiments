@@ -20,7 +20,7 @@ class ProtocolTests(unittest.TestCase):
         for job in grid():
             c=configuration(job['scope'],job['optimizer'],job['node'],0)
             self.assertEqual(c['budget']['steps'],3815)
-            self.assertEqual(c['design'],'v1.7')
+            self.assertEqual(c['design'],'v1.8')
         self.assertEqual(len({(j['scope'],j['optimizer'],j['node']) for j in grid()}),840)
         with self.assertRaises(ValueError): b.accumulations(3,4)
         self.assertEqual(b.multiplier(0),0)

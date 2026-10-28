@@ -1,1 +1,1 @@
-"""Controlled gradient-noise experiments; design v1.7."""
+"""Controlled gradient-noise experiments; design v1.8."""

@@ -9,7 +9,7 @@ if (( $# > 1 )); then
 fi
 
 scope="${1:-last1}"
-result_root="${RUN_BASE:-/data/260010171/results/nanogpt-v1.7}"
+result_root="${RUN_BASE:-/data/260010171/results/nanogpt-v1.8}"
 
 # set -e guarantees that finalization is never attempted after a failed pool.
 bash "$REPO_ROOT/scripts/h100.sh" scope "$scope"

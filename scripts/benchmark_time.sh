@@ -2,7 +2,7 @@
 set -euo pipefail
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$REPO_ROOT"
-INPUT_ROOT="${INPUT_ROOT:-/data/260010171/inputs-v1.7}"
+INPUT_ROOT="${INPUT_ROOT:-/data/260010171/inputs-v1.8}"
 BENCH_OUT="${BENCH_OUT:-$REPO_ROOT/timing-$(date +%Y%m%d-%H%M%S)}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 exec "${PYTHON:-python}" scripts/benchmark_time.py \

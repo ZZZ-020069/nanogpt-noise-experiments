@@ -7,7 +7,8 @@ SIGMA2 = (0., .0001, .001, .01, .1, 1., 10.)
 SCOPES = ('full', 'last1', 'last2', 'last3', 'last6', 'last12')
 CENTERS = dict(adamw=.0006, adam=.0006, sgd=.01, muon=.02)
 INITIAL = (-1., -.5, 0., .5, 1.)
-VERSION = 'v1.7'
+VERSION = 'v1.8'
+INPUT_POLICY = 'server-fresh-v1'
 SEEDS = dict(initialization=1337, data=1337, noise=20260902,
              eval_train=20260829, eval_val=20260830, preparation=2357)
 
@@ -65,10 +66,13 @@ def configuration(scope, optimizer, node, exponent):
 
 
 def require_current_input(identity):
-    """Fail closed: old frozen budgets must be migrated, never silently reused."""
+    """Require this release's freshly prepared, registered input realization."""
     from .model import Shape
     if (identity.get('tiny') or identity.get('design') != VERSION
             or identity.get('budget') != asdict(Budget())
-            or identity.get('shape') != asdict(Shape())):
-        raise ValueError('Frozen inputs do not match the current v1.7/2B protocol; '
-                         'use nanogpt_noise.migrate_inputs with a new output root')
+            or identity.get('shape') != asdict(Shape())
+            or identity.get('meta', {}).get('input_policy') != INPUT_POLICY
+            or identity.get('meta', {}).get('preparation_design') != VERSION
+            or 'migration' in identity):
+        raise ValueError('Frozen inputs do not match the current v1.8/2B protocol; '
+                         'run bash scripts/run_acp.sh inputs in a fresh INPUT_ROOT')

@@ -1,4 +1,4 @@
-> v1.7 可选探索工具；当前任务请使用 RUN_TASK.md 的 last1 入口。2026-10-28 已完成的旧 pilot 使用 2.6B 调度，此处新入口不能恢复旧结果。
+> v1.8 可选探索工具；当前任务请使用 RUN_TASK.md 的 last1 入口。2026-10-28 已完成的旧 pilot 使用 2.6B 调度，此处新入口不能恢复旧结果。
 
 # 双 RTX 联合初筛：启动、恢复与交付
 
@@ -29,7 +29,7 @@ docs/JOINT_PILOT.md
 ```bash
 cd /experiments/xuyangzhang/nanogpt-noise-experiments
 /experiments/xuyangzhang/venvs/quadratic/bin/python -m zipfile -e \
-  /experiments/xuyangzhang/joint-pilot-v1.7-2b.zip .
+  /experiments/xuyangzhang/joint-pilot-v1.8-2b.zip .
 ```
 
 此 pilot 完整保留 24 条轨迹的终点模型及优化器状态；完成后约数十 GB，建议结果盘准备至少 **50 GB 可用空间**，包括并发原子写盘余量。这是预留建议，实际文件大小由目标环境决定。程序不自动删除 checkpoint，也不修改输入。
@@ -54,9 +54,9 @@ cd /experiments/xuyangzhang/nanogpt-noise-experiments
 nohup env \
   INPUT_ROOT=/experiments/xuyangzhang/nanogpt-inputs \
   PYTHON=/experiments/xuyangzhang/venvs/quadratic/bin/python \
-  PILOT_OUT=/experiments/xuyangzhang/nanogpt-noise-experiments/joint-pilot-v1.7-2b \
+  PILOT_OUT=/experiments/xuyangzhang/nanogpt-noise-experiments/joint-pilot-v1.8-2b \
   bash scripts/run_joint_pilot.sh \
-  >> joint-pilot-v1.7-2b.console.log 2>&1 < /dev/null &
+  >> joint-pilot-v1.8-2b.console.log 2>&1 < /dev/null &
 ```
 
 最后显示的是 supervisor 的进程号，保存下来便于停止。默认预计约 **6 小时**，依据此前双 RTX micro4 的 20-step 测速线性外推；不是时间上限。高 LR 数值失败会记录实际消耗，可能提前结束该候选。完整输入验证、并发磁盘、持续吞吐和负载可能改变实际工期。
@@ -66,7 +66,7 @@ nohup env \
 ## 4. 查看进度
 
 ```bash
-tail -f /experiments/xuyangzhang/nanogpt-noise-experiments/joint-pilot-v1.7-2b.console.log
+tail -f /experiments/xuyangzhang/nanogpt-noise-experiments/joint-pilot-v1.8-2b.console.log
 ```
 
 总日志会打印每次领取任务、GPU token、候选日志路径及完成数量。候选日志在结果目录的 `launcher/*.log`，每 10 步打印训练进度。`summary.json` 在队列推进时和结束时更新。
@@ -77,7 +77,7 @@ tail -f /experiments/xuyangzhang/nanogpt-noise-experiments/joint-pilot-v1.7-2b.c
 cd /experiments/xuyangzhang/nanogpt-noise-experiments
 INPUT_ROOT=/experiments/xuyangzhang/nanogpt-inputs \
 PYTHON=/experiments/xuyangzhang/venvs/quadratic/bin/python \
-PILOT_OUT=/experiments/xuyangzhang/nanogpt-noise-experiments/joint-pilot-v1.7-2b \
+PILOT_OUT=/experiments/xuyangzhang/nanogpt-noise-experiments/joint-pilot-v1.8-2b \
 bash scripts/run_joint_pilot.sh --summarize
 ```
 
@@ -100,7 +100,7 @@ OOM、磁盘或 Python/CUDA 错误属于基础设施问题：停止后修复原�
 运行结束或正常中断时，程序自动生成：
 
 ```text
-joint-pilot-v1.7-2b/
+joint-pilot-v1.8-2b/
 ├── pilot_manifest.json      # 冻结输入、脚本/训练代码哈希、计划、环境、micro
 ├── pilot_status.json
 ├── summary.json             # 汇总、有限性、LR 初始网格对照、小噪声配对
@@ -114,12 +114,12 @@ joint-pilot-v1.7-2b/
 
 下载并发回 **`analysis_bundle.zip`** 即可开始分析；模型 checkpoint 继续保存在 GPU 机器上。ZIP 包含候选 metadata、状态、评估、压缩诊断和日志；不包含 `.pt` 大文件。异常强杀时这个包可能尚未生成，可先恢复/生成报告并保留所有原文件。
 
-用户指定本机所有 GPU 下载统一使用 **D 盘**。本次接收目录固定为 `D:\港中深RA\VSCode下载\New\gpu-results\joint-pilot-v1.7-2b`；在本机 PowerShell 下载，不经过 C 盘 Downloads 或 Desktop 中转：
+用户指定本机所有 GPU 下载统一使用 **D 盘**。本次接收目录固定为 `D:\港中深RA\VSCode下载\New\gpu-results\joint-pilot-v1.8-2b`；在本机 PowerShell 下载，不经过 C 盘 Downloads 或 Desktop 中转：
 
 ```powershell
-$pilotReceiveDir = 'D:\港中深RA\VSCode下载\New\gpu-results\joint-pilot-v1.7-2b'
+$pilotReceiveDir = 'D:\港中深RA\VSCode下载\New\gpu-results\joint-pilot-v1.8-2b'
 New-Item -ItemType Directory -Force -Path $pilotReceiveDir | Out-Null
-scp -P 23457 'xuyangzhang@119.23.54.6:/experiments/xuyangzhang/nanogpt-noise-experiments/joint-pilot-v1.7-2b/analysis_bundle.zip' "$pilotReceiveDir\analysis_bundle.zip"
+scp -P 23457 'xuyangzhang@119.23.54.6:/experiments/xuyangzhang/nanogpt-noise-experiments/joint-pilot-v1.8-2b/analysis_bundle.zip' "$pilotReceiveDir\analysis_bundle.zip"
 ```
 
 上述命令只下载分析包。若后续需要 checkpoint 或完整 scope，同样显式指定 D 盘目标，不能默认同步到 C 盘。50GB 的预留建议针对 GPU 服务器结果盘，不要求本机 C 盘保留相同空间。

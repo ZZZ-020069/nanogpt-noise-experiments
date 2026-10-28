@@ -23,7 +23,7 @@ PREFIX_STEPS = 573
 OPS = ('adamw', 'muon', 'adam', 'sgd')
 TERMINAL = ('completed', 'numerical_failure')
 LIMITATIONS = [
-    '300M prefix of the v1.7 2B schedule; not a 300M cosine schedule.',
+    '300M prefix of the v1.8 2B schedule; not a 300M cosine schedule.',
     'Five versus three INITIAL LR points only; adaptive additions are not tested.',
     'Small-noise comparison uses center LR only, not independently tuned optima.',
     'Does not validate 2B sufficiency, all noise nodes, or cross-seed robustness.',
@@ -63,7 +63,7 @@ def manifest_payload(input_identity, micro, *, test=False, steps=PREFIX_STEPS):
     if input_identity['tiny'] != test:
         raise ValueError('real pilot requires real inputs; tiny inputs are test-only')
     if not test and (budget != Budget() or steps != PREFIX_STEPS):
-        raise ValueError('pilot requires the v1.7 2B input budget and 573 steps')
+        raise ValueError('pilot requires the v1.8 2B input budget and 573 steps')
     if not 1 <= steps <= budget.steps:
         raise ValueError('prefix exceeds frozen training windows')
     return dict(policy=POLICY, mode='test' if test else 'pilot_prefix',

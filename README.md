@@ -1,4 +1,4 @@
-# NanoGPT 噪声实验：v1.7，先运行 last1
+# NanoGPT 噪声实验：v1.8，先运行 last1
 
 **全部六个 scope 统一采用 35 噪声节点 × 四优化器 × 八个学习率候选 × 2B tokens。当前执行阶段只有 last1；完成并分析后再决定下一阶段。** 运行者先阅读 [简短任务说明](RUN_TASK.md)。
 
@@ -21,7 +21,7 @@
 
 每 scope 有140 jobs、最多1120条独立候选；六个 scope 总计6720条候选。2B 是本次选定的有限预算，未声称与旧2.6B等价；last1 的约10–15天只是条件估算，尚无目标硬件实测保证。last1 不是预训练模型微调；冻结的前11层、embedding、final LayerNorm与输出头均保持共同随机初始化。last12仍冻结block外参数，因此不等于full。
 
-唯一设计来源为工作区主设计；仓库中的 [发布快照](docs/nanogpt_experiment_design.md)与之同步，不单独维护另一套协议。快照中带日期的旧讨论和pilot记录不覆盖v1.7当前决定。
+唯一设计来源为工作区主设计；仓库中的 [发布快照](docs/nanogpt_experiment_design.md)与之同步，不单独维护另一套协议。快照中带日期的旧讨论和pilot记录不覆盖v1.8当前决定。
 
 ## 环境与输入
 
@@ -31,30 +31,23 @@
 
 ```text
 /data/260010171/nanogpt-noise-experiments   代码
-/data/260010171/inputs                    旧输入，迁移时只读
-/data/260010171/inputs-v1.7                当前输入
-/data/260010171/results/nanogpt-v1.7       当前结果
+/data/260010171/inputs-v1.8                当前输入
+/data/260010171/results/nanogpt-v1.8       当前结果
 ```
 
-可用 INPUT_ROOT、RUN_BASE、PYTHON 覆盖；保持绝对路径，smoke与正式运行一致。INPUT_ROOT下为openwebtext_subset、frozen-artifacts、registration.json和SHA256SUMS。DATA_DIR和ARTIFACT_DIR通常不应单独覆盖，以免与注册根目录不一致。
+可用 INPUT_ROOT、RUN_BASE、PYTHON 覆盖；保持绝对路径，smoke与正式运行一致。INPUT_ROOT下为preparation.json、openwebtext_subset、frozen-artifacts、registration.json和SHA256SUMS。DATA_DIR和ARTIFACT_DIR通常不应单独覆盖，以免与注册根目录不一致。
 
-已有旧输入时，更新代码后执行一次：
-
-```bash
-SOURCE_INPUT_ROOT=/data/260010171/inputs bash scripts/run_acp.sh migrate-inputs
-```
-
-迁移不改旧文件、不重新初始化或下载语料；复制原始train/val/meta/initial文件，取原训练窗口前3815步并保留原评估窗口，记录来源身份。新目录必须不存在；不会覆盖旧目录或恢复部分迁移。约需额外2.6GB，注册成功后所有scope共用这一份。已经有当前注册输入时不要再次迁移。
-
-没有旧输入的新服务器才执行：
+所有服务器统一在新的空 INPUT_ROOT 中执行一次：
 
 ```bash
 bash scripts/run_acp.sh inputs
 ```
 
-固定OpenWebText revision、GPT-2 tokenizer及既定划分，生成1B训练语料和10M验证语料，再冻结初始化及窗口。这是语料容量，训练时重复采样至2B。此步骤可能耗时数小时；可通过HF_HOME指定下载缓存位置。已有注册输入只校验；旧预算会报错要求迁移，不会静默继续训练。
+固定 OpenWebText revision、GPT-2 tokenizer 及既定划分，直接在服务器流式生成 1B 训练语料和 10M 验证语料，再重新制备共同未训练初始化、训练与评估窗口并登记。无需 SCP 上传数据，也不接受旧输入迁移。1B 是语料容量，训练时重复采样至 2B。首次制备可能耗时数小时，需要服务器访问数据源。
 
-只准备环境而不训练：`bash scripts/run_acp.sh prepare`。已有环境也可直接运行 `python -m nanogpt_noise.migrate_inputs --source-root OLD --output-root NEW`。
+目录必须为空或不存在。程序创建本版本 preparation.json 标记；中断后仅允许继续本版本制备，明确的 .incomplete 语料可从源重做，半写入的最终语料/冻结产物保留诊断并改用新目录。旧文件不会被覆盖。成功登记后，再运行 inputs 只校验身份和哈希，不重新生成；所有候选及 scope 共用这一份输入，正式训练后不得更换。
+
+输入文件约 2.53 GB；流式读取仍可能使用缓存，可通过 HF_HOME 指定位置，环境目录由 ENV_PREFIX 指定。缓存和环境需要额外空间。只准备环境而不制备输入或训练：`bash scripts/run_acp.sh prepare`。已激活兼容环境时，完整制备的等价入口是 `python -m nanogpt_noise.prepare --input-root /绝对路径/inputs-v1.8 --restart-incomplete`。
 
 ## 冒烟和正式启动
 
@@ -88,7 +81,7 @@ GPU由平台分配；CUDA_VISIBLE_DEVICES必须列出四个不同的GPU编号/UU
 
 每个job仅保留当前/最终winner的一份checkpoint（含模型与优化器状态）；非winner保留全部metadata、状态、评估及压缩逐步诊断。最后winner直接使用已有轨迹，不额外重训。每个scope完成后输出逐文件大小和SHA-256的scope_manifest.json。不要在结果盘另建同体积tar/zip。
 
-`python -m nanogpt_noise.scope estimate --scope last1` 输出静态空间估算，smoke和首批任务还需核验真实文件大小。last1静态峰值约84.03GB；full峰值约195.58GB，不能把该值理解为last1实际使用量；数据、环境、下载缓存与接收端空间另计。脚本报告空间，不自动设置磁盘阈值。
+`python -m nanogpt_noise.scope estimate --scope last1` 输出静态空间估算，smoke和首批任务还需核验真实文件大小。last1静态峰值约84.03GB；full峰值约195.58GB，不能把该值理解为last1实际使用量；该84.03GB已含公共输入/日志4GB预留，另加四项smoke checkpoint约2.16GB；环境、下载缓存及接收端空间另计。脚本报告空间，不自动设置磁盘阈值。
 
 中断后使用相同commit、环境、输入、scope、micro与RUN_BASE重跑同一启动命令。完成候选复用终态，未完成候选恢复latest.pt。NaN/Inf保留明确失败标签并继续搜索；OOM/存储/硬件错误属于基础设施故障，恢复同一候选，不能换LR规避。如果smoke后改变代码、环境或micro，使用新的RUN_BASE重新冒烟；不要覆盖旧输出。旧2.6B、旧pilot及旧smoke不能迁入新结果目录，也不能修改metadata绕过身份检查。
 
@@ -96,7 +89,7 @@ GPU由平台分配；CUDA_VISIBLE_DEVICES必须列出四个不同的GPU编号/UU
 
 ```bash
 bash scripts/h100.sh status last1
-tail -f /data/260010171/results/nanogpt-v1.7/last1/launcher/job_0140.log
+tail -f /data/260010171/results/nanogpt-v1.8/last1/launcher/job_0140.log
 ```
 
 若使用nohup，应将控制台日志放在RUN_BASE之外或其父目录并使用绝对路径；平台任务中通常直接用上述启动命令。停止任务时给进程树SIGTERM，让活跃候选保存状态；硬杀可能留下.lock，只有确认无活跃进程后才可处理遗留锁。恢复期间不得更新代码或依赖。
@@ -105,10 +98,10 @@ tail -f /data/260010171/results/nanogpt-v1.7/last1/launcher/job_0140.log
 
 看到FORMAL SCOPE FINALIZED后，完整传输RUN_BASE/last1目录。不要只下载winner或summary而遗漏候选日志。使用WinSCP/SFTP或rsync保留目录层级，连接中断后续传。
 
-本机接收位置必须在D盘，例如 `D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.7\last1`，不要经C盘Downloads/Desktop中转。在安装同一commit的接收端校验：
+本机接收位置必须在D盘，例如 `D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8\last1`，不要经C盘Downloads/Desktop中转。在安装同一commit的接收端校验：
 
 ```powershell
-python -m nanogpt_noise.scope verify --runs 'D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.7\last1'
+python -m nanogpt_noise.scope verify --runs 'D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8\last1'
 ```
 
 校验成功前保留服务器副本。当前安排是在last1完成后分析，暂不启动下一个scope。若以后需人工清理已交接目录，现有scope cleanup命令要求目录匹配、finalize/self-verify通过和DELETE-scope确认串；没有自动清理。
@@ -116,7 +109,7 @@ python -m nanogpt_noise.scope verify --runs 'D:\港中深RA\VSCode下载\New\gpu
 单scope分析：
 
 ```bash
-python -m nanogpt_noise.analyze --runs /data/260010171/results/nanogpt-v1.7/last1 --output /data/260010171/results/analysis-last1-v1.7 --plots
+python -m nanogpt_noise.analyze --runs /data/260010171/results/nanogpt-v1.8/last1 --output /data/260010171/results/analysis-last1-v1.8 --plots
 ```
 
 ## Slurm 与维护

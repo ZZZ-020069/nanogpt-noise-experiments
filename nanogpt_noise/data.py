@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from .artifacts import file_hash,write_json,read_json,save_checkpoint,tensor_hash,digest,lock
 from .model import GPT,Shape
-from .protocol import Budget,VERSION,require_current_input
+from .protocol import Budget,VERSION,INPUT_POLICY,require_current_input
 
 REVISION = '79d93d786212f7344586290adb811d4ae6a1762c'
 
@@ -41,7 +41,8 @@ def freeze(data, output, tiny=False):
         lengths = {s:(data/f'{s}.bin').stat().st_size//2 for s in ('train','val')}
         meta = read_json(data/'meta.json')
         if not tiny:
-            required = dict(source_dataset='Skylion007/openwebtext',source_revision=REVISION,
+            required = dict(input_policy=INPUT_POLICY, preparation_design=VERSION,
+                            source_dataset='Skylion007/openwebtext',source_revision=REVISION,
                             source_split='train',shuffle_seed=2357,shuffle_buffer=10000,
                             tokenizer='tiktoken:gpt2',dtype='uint16',eot_token=50256,vocab_size=50257)
             if any(meta.get(k)!=v for k,v in required.items()) or lengths != dict(train=1_000_000_000,val=10_000_000):

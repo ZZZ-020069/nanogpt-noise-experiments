@@ -31,7 +31,7 @@ class PreparationTests(unittest.TestCase):
             data,artifacts=root/'openwebtext_subset',root/'frozen-artifacts'
             identity=register_bundle(root,data,artifacts)
             self.assertEqual(verify_bundle(root,data,artifacts),identity)
-            with self.assertRaisesRegex(ValueError, 'protocol'):
+            with self.assertRaisesRegex(ValueError, 'empty INPUT_ROOT'):
                 prepare_bundle(root)  # tiny bundles are never formal preparation inputs
             self.assertTrue((root/'registration.json').is_file())
             self.assertEqual(len((root/'SHA256SUMS').read_text().splitlines()),6)
