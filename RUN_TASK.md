@@ -39,7 +39,7 @@ bash scripts/run_acp.sh smoke last1
 
 已有兼容环境的等价入口：`bash scripts/run_last1_smoke.sh`。不自动安装环境。
 
-## 4. 四张 H100：启动或恢复 last1
+## 4. 四张 H100：首次启动 last1
 
 ```bash
 bash scripts/run_acp.sh formal last1
@@ -47,7 +47,7 @@ bash scripts/run_acp.sh formal last1
 
 四卡分别领取 jobs 140–279，每个 job 内顺序完成八个候选；只运行 last1。省略 scope 也默认 last1。完成后自动 finalize 并输出 `FORMAL SCOPE FINALIZED`，不会运行下一个 scope。
 
-已有兼容环境的等价入口：`bash scripts/run_last1.sh`。中断后使用相同 commit、输入、软件环境、micro-batch 和输出目录重新运行同一命令。micro 默认 4；全局 batch 始终为 512×1024 tokens。禁止为恢复而改 metadata、预算或学习率。
+已有兼容环境的等价入口：`bash scripts/run_last1.sh`。micro 默认 4；全局 batch 始终为 512×1024 tokens。需要暂停或继续时，使用下一节的命令。
 
 ## 5. 暂停与继续
 
@@ -64,6 +64,8 @@ bash scripts/run_acp.sh pause last1
 ```bash
 bash scripts/run_acp.sh resume last1
 ```
+
+主动执行 pause 后，必须使用 resume 解除暂停标记并续训；直接执行 formal 会拒绝启动。若是意外中断且没有暂停标记，在确认原进程已退出、处理遗留锁后，也可重新执行 formal 从原目录的 checkpoint 接续。两者共用同一套续训逻辑。恢复时保持相同 commit、输入、软件环境、micro-batch 和输出目录，禁止修改 metadata、预算或学习率。
 
 无需再次制备输入；完成候选不重训，未完成候选从checkpoint接续。断电/强制终止时通常最多重算最近约191步，遗留.lock需先确认无活跃进程再人工处理。输入与结果必须放在平台暂停/销毁任务后仍持久保存的目录；仅关闭临时容器但丢失磁盘不能恢复。
 

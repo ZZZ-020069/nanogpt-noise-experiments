@@ -66,7 +66,7 @@ bash scripts/run_acp.sh smoke last1
 
 smoke包括节点(.03,.01)、中心LR、初末固定窗口评估、冻结校验和及checkpoint。四项全部成功才写入代码和输入验收标记；正式入口还核对scope、micro、协议、软件版本与候选metadata。smoke保存为独立的短前缀结果，不参加正式排名。8步不检验收敛，也不足以保证多日吞吐。
 
-四张H100，启动/恢复last1：
+四张H100，首次启动last1：
 
 ```bash
 bash scripts/run_acp.sh formal last1
@@ -83,7 +83,7 @@ GPU由平台分配；CUDA_VISIBLE_DEVICES必须列出四个不同的GPU编号/UU
 
 `python -m nanogpt_noise.scope estimate --scope last1` 输出静态空间估算，smoke和首批任务还需核验真实文件大小。last1静态峰值约84.03GB；full峰值约195.58GB，不能把该值理解为last1实际使用量；该84.03GB已含公共输入/日志4GB预留，另加四项smoke checkpoint约2.16GB；环境、下载缓存及接收端空间另计。脚本报告空间，不自动设置磁盘阈值。
 
-中断后使用相同commit、环境、输入、scope、micro与RUN_BASE恢复。主动暂停后用 resume；意外中断且无暂停请求时可重跑 formal。完成候选复用终态，未完成候选恢复latest.pt。NaN/Inf保留明确失败标签并继续搜索；OOM/存储/硬件错误属于基础设施故障，恢复同一候选，不能换LR规避。如果smoke后改变代码、环境或micro，使用新的RUN_BASE重新冒烟；不要覆盖旧输出。旧2.6B、旧pilot及旧smoke不能迁入新结果目录，也不能修改metadata绕过身份检查。
+中断后使用相同commit、环境、输入、scope、micro与RUN_BASE恢复。主动执行 pause 后用 resume 解除暂停标记并续训；直接执行 formal 会拒绝启动。意外中断且无暂停请求时，确认原进程已退出并处理遗留锁后，可重跑 formal。两者共用同一套续训逻辑。完成候选复用终态，未完成候选恢复latest.pt。NaN/Inf保留明确失败标签并继续搜索；OOM/存储/硬件错误属于基础设施故障，恢复同一候选，不能换LR规避。如果smoke后改变代码、环境或micro，使用新的RUN_BASE重新冒烟；不要覆盖旧输出。旧2.6B、旧pilot及旧smoke不能迁入新结果目录，也不能修改metadata绕过身份检查。
 
 进度查看（默认目录）：
 
