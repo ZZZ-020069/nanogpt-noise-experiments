@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from .artifacts import file_hash,write_json,read_json,save_checkpoint,tensor_hash,digest,lock
 from .model import GPT,Shape
-from .protocol import Budget,VERSION
+from .protocol import Budget,VERSION,require_current_input
 
 REVISION = '79d93d786212f7344586290adb811d4ae6a1762c'
 
@@ -31,6 +31,8 @@ def freeze(data, output, tiny=False):
             existing = read_json(output/'identity.json')
             if existing['tiny'] != tiny:
                 raise ValueError('artifact mode mismatch')
+            if not tiny:
+                require_current_input(existing)
             return existing
         if any((output/p).exists() for p in ('initial.pt','windows.pt')):
             raise RuntimeError('partial artifact preparation: use a fresh output directory')

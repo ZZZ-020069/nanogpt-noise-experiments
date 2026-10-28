@@ -10,7 +10,7 @@
 # Four GPUs run four independent experiment jobs from one named scope.
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:?}"
-: "${SCOPE:?Export SCOPE as full, last1, last2, last3, last6 or last12 before sbatch}"
+SCOPE="${SCOPE:-last1}"
 # Split the requested host threads across the four independent Python workers.
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"
-bash scripts/run_4gpu.sh scope "$SCOPE"
+bash scripts/run_formal.sh "$SCOPE"

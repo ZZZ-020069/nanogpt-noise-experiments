@@ -7,7 +7,7 @@ SIGMA2 = (0., .0001, .001, .01, .1, 1., 10.)
 SCOPES = ('full', 'last1', 'last2', 'last3', 'last6', 'last12')
 CENTERS = dict(adamw=.0006, adam=.0006, sgd=.01, muon=.02)
 INITIAL = (-1., -.5, 0., .5, 1.)
-VERSION = 'v1.6'
+VERSION = 'v1.7'
 SEEDS = dict(initialization=1337, data=1337, noise=20260902,
              eval_train=20260829, eval_val=20260830, preparation=2357)
 
@@ -16,7 +16,7 @@ SEEDS = dict(initialization=1337, data=1337, noise=20260902,
 class Budget:
     sequence: int = 1024
     batch: int = 512
-    steps: int = 4960
+    steps: int = 3815
     warmup: int = 100_000_000
     eval_every: int = 100_000_000
     eval_sequences: int = 200
@@ -62,3 +62,13 @@ def configuration(scope, optimizer, node, exponent):
                 sigma1=SIGMA1[node//7], sigma2=SIGMA2[node%7], exponent=exponent,
                 peak_lr=CENTERS[optimizer]*10**exponent, grad_clip=0,
                 budget=asdict(Budget()), seeds=SEEDS)
+
+
+def require_current_input(identity):
+    """Fail closed: old frozen budgets must be migrated, never silently reused."""
+    from .model import Shape
+    if (identity.get('tiny') or identity.get('design') != VERSION
+            or identity.get('budget') != asdict(Budget())
+            or identity.get('shape') != asdict(Shape())):
+        raise ValueError('Frozen inputs do not match the current v1.7/2B protocol; '
+                         'use nanogpt_noise.migrate_inputs with a new output root')

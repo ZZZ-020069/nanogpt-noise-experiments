@@ -12,9 +12,15 @@ def initial(losses):
 class ProtocolTests(unittest.TestCase):
     def test_budget_grid(self):
         b=Budget()
-        self.assertEqual(b.tokens,2600468480)
+        self.assertEqual(b.tokens,2000158720)
         self.assertEqual(b.accumulations(4,4),32)
         self.assertEqual(len(grid()),840)
+        self.assertEqual(sum(b.evaluate_at(step) for step in range(b.steps+1)),21)
+        self.assertEqual(b.steps,3815)
+        for job in grid():
+            c=configuration(job['scope'],job['optimizer'],job['node'],0)
+            self.assertEqual(c['budget']['steps'],3815)
+            self.assertEqual(c['design'],'v1.7')
         self.assertEqual(len({(j['scope'],j['optimizer'],j['node']) for j in grid()}),840)
         with self.assertRaises(ValueError): b.accumulations(3,4)
         self.assertEqual(b.multiplier(0),0)
@@ -22,7 +28,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(b.multiplier(b.tokens),.1)
         self.assertFalse(b.evaluate_at(190))
         self.assertTrue(b.evaluate_at(191))
-        self.assertTrue(b.evaluate_at(4960))
+        self.assertTrue(b.evaluate_at(3815))
         self.assertAlmostEqual(configuration('full','muon',0,-.5)['peak_lr'],.02/math.sqrt(10))
 
     def test_expansion_and_feedback(self):

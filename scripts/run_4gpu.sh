@@ -24,7 +24,7 @@ MODE="${1:-}"
 case "$MODE" in
   smoke)
     if (( $# != 1 && $# != 4 )); then usage >&2; exit 2; fi
-    SCOPE="${2:-full}"
+    SCOPE="${2:-last1}"
     OPTIMIZER="${3:-muon}"
     NOISE_NODE="${4:-10}"
     case "$SCOPE" in full|last1|last2|last3|last6|last12) ;; *) usage >&2; exit 2;; esac

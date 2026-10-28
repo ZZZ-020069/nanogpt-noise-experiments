@@ -5,32 +5,32 @@ set -euo pipefail
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd -- "$REPO_ROOT"
 
-INPUT_ROOT="${INPUT_ROOT:-/data/260010171/inputs}"
+INPUT_ROOT="${INPUT_ROOT:-/data/260010171/inputs-v1.7}"
 DATA_DIR="${DATA_DIR:-$INPUT_ROOT/openwebtext_subset}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-$INPUT_ROOT/frozen-artifacts}"
-RUN_BASE="${RUN_BASE:-/data/260010171/results/nanogpt-v1.6}"
+RUN_BASE="${RUN_BASE:-/data/260010171/results/nanogpt-v1.7}"
 PYTHON="${PYTHON:-python}"
 GIT_BIN="${GIT_BIN:-git}"
-LEGACY_EXPECTED_ID='9cabd9c54c6d717354f8f6750715f9280c5502f0a85a9032806b9c7956cbd76e'
-SMOKE_STATUS="$RUN_BASE/smoke/1gpu/full-muon-node10/status.json"
-SMOKE_COMMIT="$RUN_BASE/smoke/operator_commit.txt"
-SMOKE_INPUT="$RUN_BASE/smoke/input_id.txt"
+SMOKE_SCOPE="${2:-last1}"
+SMOKE_STATUS="$RUN_BASE/smoke/1gpu/$SMOKE_SCOPE-muon-node10/status.json"
+SMOKE_COMMIT="$RUN_BASE/smoke/$SMOKE_SCOPE/operator_commit.txt"
+SMOKE_INPUT="$RUN_BASE/smoke/$SMOKE_SCOPE/input_id.txt"
 export DATA_DIR ARTIFACT_DIR PYTHON
 
 usage() {
   printf '%s\n' \
     'Usage: bash scripts/h100.sh check' \
-    '       bash scripts/h100.sh smoke' \
+    '       bash scripts/h100.sh smoke [SCOPE]' \
     '       bash scripts/h100.sh scope SCOPE' \
     '       bash scripts/h100.sh finalize SCOPE' \
     '       bash scripts/h100.sh status [SCOPE]' \
     '' \
     'SCOPE: full, last1, last2, last3, last6, or last12.' \
     'Defaults:' \
-    '  INPUT_ROOT=/data/260010171/inputs' \
-    '  RUN_BASE=/data/260010171/results/nanogpt-v1.6' \
+    '  INPUT_ROOT=/data/260010171/inputs-v1.7' \
+    '  RUN_BASE=/data/260010171/results/nanogpt-v1.7' \
     '' \
-    'smoke requires one visible H100; scope requires exactly four.' \
+    'smoke defaults to last1, tests all four optimizers on one H100; scope requires four GPUs.' \
     'Activate the intended Python/CUDA environment before using this script.'
 }
 
@@ -106,10 +106,7 @@ verify_inputs() {
     expected="$identity"
     printf 'Input registration: %s\n' "$INPUT_ROOT/registration.json"
   else
-    identity="$("$PYTHON" -m nanogpt_noise.data \
-      --data "$DATA_DIR" --artifacts "$ARTIFACT_DIR" --verify)"
-    expected="$LEGACY_EXPECTED_ID"
-    printf '%s\n' 'Using the legacy published input identity (no registration.json).'
+    die 'registration.json missing; prepare v1.7 inputs or migrate old inputs to a new root'
   fi
   if [[ "$identity" != "$expected" ]]; then
     printf 'Expected input ID: %s\nActual output: %s\n' \
@@ -152,6 +149,8 @@ validate_smoke() {
     die 'smoke output is not marked as smoke'
   grep -Eq '"step"[[:space:]]*:[[:space:]]*8([^0-9]|$)' "$SMOKE_STATUS" || \
     die 'smoke output did not finish step 8'
+  "$PYTHON" -m nanogpt_noise.smoke --runs "$RUN_BASE" --scope "$SMOKE_SCOPE" \
+    --input-id "$INPUT_ID" --micro-batch "${MICRO_BATCH:-4}"
 }
 
 record_smoke_identity() {
@@ -185,10 +184,13 @@ case "$command" in
     run_check
     ;;
   smoke)
-    (( $# == 1 )) || die 'smoke takes no additional arguments'
+    (( $# <= 2 )) || die 'smoke accepts at most one scope'
+    validate_scope "$SMOKE_SCOPE"
     run_check
     export RUN_DIR="$RUN_BASE"
-    bash scripts/run_4gpu.sh smoke
+    for optimizer in adamw adam sgd muon; do
+      bash scripts/run_4gpu.sh smoke "$SMOKE_SCOPE" "$optimizer" 10
+    done
     validate_smoke
     record_smoke_identity
     printf 'SMOKE PASSED: %s\n' "$SMOKE_STATUS"

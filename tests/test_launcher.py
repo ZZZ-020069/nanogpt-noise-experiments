@@ -51,7 +51,7 @@ class PreflightTests(unittest.TestCase):
         with patch.object(preflight, 'verify', return_value={'tiny': True}):
             with self.assertRaisesRegex(ValueError, 'tiny'):
                 preflight.check_inputs('data', 'artifacts')
-        identity = dict(tiny=False, budget=train.asdict(train.Budget()),
+        identity = dict(design='v1.7', tiny=False, budget=train.asdict(train.Budget()),
                         shape=train.asdict(train.Shape()), id='example')
         with patch.object(preflight, 'verify', return_value=identity):
             self.assertEqual(preflight.check_inputs('data', 'artifacts'), 'example')
@@ -112,7 +112,7 @@ class ShellTests(unittest.TestCase):
         self.assertIn('ARG=<--training-world>\nARG=<1>', result.stdout)
         self.assertIn('ARG=<--smoke-steps>\nARG=<8>', result.stdout)
         self.assertIn('ARG=</data path/tokens>', result.stdout)
-        self.assertIn('/smoke/1gpu/full-muon-node10', result.stdout)
+        self.assertIn('/smoke/1gpu/last1-muon-node10', result.stdout)
         self.assertNotIn('torch.distributed.run', result.stdout)
         self.assertNotIn('ARG=<nanogpt_noise.node>', result.stdout)
 

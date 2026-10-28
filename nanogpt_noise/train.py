@@ -17,7 +17,7 @@ from .artifacts import (read_json,write_json,save_checkpoint,tensor_hash,digest,
 from .data import batch,verify
 from .model import GPT,Shape,set_scope
 from .noise import inject,norm,ratio
-from .protocol import Budget,configuration,SCOPES,CENTERS
+from .protocol import Budget,configuration,SCOPES,CENTERS,require_current_input
 
 
 class NumericalFailure(Exception):
@@ -118,6 +118,11 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after):
     ident = verify(data,artifacts)
     if ident['tiny'] != (mode=='test'):
         raise ValueError('tiny fixtures cannot be used for real-model runs')
+    if mode != 'test':
+        require_current_input(ident)
+        expected = configuration(config['scope'], config['optimizer'], config['node'], config['exponent'])
+        if any(config.get(key) != value for key, value in expected.items()):
+            raise ValueError('candidate config does not match the current protocol')
     budget, shape = Budget(**ident['budget']),Shape(**ident['shape'])
     accumulation = budget.accumulations(rt.world,micro)
     target = budget.steps if smoke_steps is None else smoke_steps
@@ -319,7 +324,7 @@ def main():
     p.add_argument('--data',required=True)
     p.add_argument('--artifacts',required=True)
     p.add_argument('--output',required=True)
-    p.add_argument('--scope',choices=SCOPES,default='full')
+    p.add_argument('--scope',choices=SCOPES,default='last1')
     p.add_argument('--optimizer',choices=CENTERS,default='adamw')
     p.add_argument('--node',type=int,default=0)
     p.add_argument('--exponent',type=float,default=0)

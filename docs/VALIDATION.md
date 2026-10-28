@@ -1,3 +1,18 @@
+# v1.7 implementation validation — 2026-10-28
+
+Current release applies 35 nodes, five initial plus three adaptive LR candidates, and a true 3815-step / 2,000,158,720-token schedule to every scope. The current operator entrypoint defaults to last1 and never chains scopes.
+
+- Windows Python 3.13.5 / PyTorch 2.9.1+cpu: full 92-test suite passed in 78.016 seconds. After final review corrected the smoke validator's CLI exponent representation (0.0 versus 0 in JSON identity), all nine v1.7 regression tests passed again in 2.534 seconds with a fixture matching the real argparse float.
+- Migration tests verify source files remain unchanged, corpus and initialization bytes are identical, training windows are a strict prefix, evaluation windows are identical, lineage and registration are valid, and reused/overlapping/tampered destinations or sources are rejected. These use tiny CPU fixtures, not a newly migrated production server bundle.
+- Direct training rejects old frozen budgets and inconsistent configs for all six scopes. Protocol tests cover every job's common budget, 3815 steps, 21 evaluation events, warmup and cosine endpoint.
+- Operator tests cover last1 jobs 140–279, all four optimizer smoke candidates, wrong-scope/missing smoke and input changes, registration requirements, migration routing, and no finalization after pool failure. Shell tests use process stubs, not real GPUs.
+- All Bash scripts passed syntax checks; Python compile checks, 840-job dry manifest and authoritative design/snapshot comparison passed. Optional pilot dry-run requires no inputs and creates no run directory.
+- Git Bash could not initialize MSYS named objects inside the Windows sandbox; the full suite and Bash checks were run successfully outside that sandbox. One intermediate run detected files changing during an identity test; it was repeated with fixed files. No assertion was weakened to accept a changed identity.
+- H100 BF16 execution, real four-GPU concurrency/throughput, production input migration, and real checkpoint/disk sizes still require the delivered target-server smoke and first jobs. No GPU or long training was started during this implementation.
+- CI status for the pushed commit is separate from local verification; earlier CI records below do not certify v1.7.
+
+---
+
 # Implementation validation — 2026-10-16
 
 These checks are implementation tests, not research results.

@@ -70,7 +70,10 @@ def main():
     parser.add_argument('--input-root', required=True)
     args = parser.parse_args()
     action = register_bundle if args.command == 'register' else verify_bundle
-    print(action(args.input_root))
+    result = action(args.input_root)
+    from .protocol import require_current_input
+    require_current_input(read_json(Path(args.input_root)/'frozen-artifacts'/'identity.json'))
+    print(result)
 
 
 if __name__ == '__main__':

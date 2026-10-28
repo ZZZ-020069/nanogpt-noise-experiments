@@ -54,6 +54,17 @@ class AcpTests(unittest.TestCase):
         self.assertIn('explicit PYTHON', result.stderr)
         self.assertNotIn('ACP ENVIRONMENT READY', result.stdout)
 
+    def test_migration_does_not_download_corpus_or_train(self):
+        self.env['SOURCE_INPUT_ROOT'] = self.helper.shell_path(self.base/'old inputs')
+        result = self.invoke('migrate-inputs')
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output)
+        self.assertIn('PY=<nanogpt_noise.migrate_inputs>', output)
+        self.assertIn('PY=<--source-root>', output)
+        self.assertIn('INPUT BUNDLE MIGRATED', output)
+        self.assertNotIn('PY=<requirements-prepare.txt>', output)
+        self.assertNotIn('PY=<nanogpt_noise.train>', output)
+
     def test_install_failure_never_starts_training(self):
         stub = self.base / 'pip-failure'
         stub.write_text('#!/usr/bin/env bash\n'

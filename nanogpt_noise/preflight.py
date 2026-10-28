@@ -1,11 +1,9 @@
 """Read-only acceptance checks before a GPU launch."""
 import argparse
-from dataclasses import asdict
 import json
 import torch
 from .data import verify
-from .model import Shape
-from .protocol import Budget
+from .protocol import Budget, require_current_input
 
 
 def check_hardware(micro, expected_gpus=1, training_world=1):
@@ -39,8 +37,7 @@ def check_inputs(data, artifacts):
     identity = verify(data, artifacts)
     if identity['tiny']:
         raise ValueError('Refusing tiny test artifacts for a real-model launch')
-    if identity['budget'] != asdict(Budget()) or identity['shape'] != asdict(Shape()):
-        raise ValueError('Frozen artifacts do not match the current protocol')
+    require_current_input(identity)
     return identity['id']
 
 

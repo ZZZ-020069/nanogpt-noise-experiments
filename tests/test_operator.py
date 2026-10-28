@@ -39,6 +39,7 @@ class OperatorScriptTests(unittest.TestCase):
             fake_bin = base / 'bin'
             for path in (data, artifacts, run_base, fake_bin):
                 path.mkdir(parents=True, exist_ok=True)
+            (input_root/'registration.json').write_text('{}', encoding='utf8')
             for name in ('train.bin', 'val.bin', 'meta.json'):
                 (data / name).write_bytes(b'fixture')
             for name in ('initial.pt', 'windows.pt', 'identity.json'):
@@ -130,7 +131,7 @@ class OperatorScriptTests(unittest.TestCase):
             result = self.invoke(root, env, 'check')
             output = self.combined(result)
             self.assertEqual(result.returncode, 0, output)
-            self.assertIn('PY=<nanogpt_noise.data>', output)
+            self.assertIn('PY=<nanogpt_noise.input_bundle>', output)
             self.assertIn('PY=<unittest>', output)
             self.assertIn('/openwebtext_subset', output)
             self.assertIn('/frozen-artifacts', output)
@@ -148,20 +149,20 @@ class OperatorScriptTests(unittest.TestCase):
         with self.fixture() as (root, run_base, run_base_shell, env):
             smoke = self.invoke(root, env, 'smoke', visible='0')
             self.assertEqual(smoke.returncode, 0, self.combined(smoke))
-            status = run_base / 'smoke/1gpu/full-muon-node10/status.json'
-            marker = run_base / 'smoke/operator_commit.txt'
-            input_marker = run_base / 'smoke/input_id.txt'
+            status = run_base / 'smoke/1gpu/last1-muon-node10/status.json'
+            marker = run_base / 'smoke/last1/operator_commit.txt'
+            input_marker = run_base / 'smoke/last1/input_id.txt'
             self.assertTrue(status.is_file())
             self.assertEqual(marker.read_text(encoding='utf-8').strip(), 'test-commit')
             self.assertEqual(input_marker.read_text(encoding='utf-8').strip(), EXPECTED_ID)
 
-            formal = self.invoke(root, env, 'scope', 'full', visible='0,1,2,3')
+            formal = self.invoke(root, env, 'scope', 'last1', visible='0,1,2,3')
             output = self.combined(formal)
             self.assertEqual(formal.returncode, 0, output)
             self.assertIn('PY=<nanogpt_noise.pool>', output)
-            self.assertIn(f'{run_base_shell}/full', output)
+            self.assertIn(f'{run_base_shell}/last1', output)
 
-            finalize = self.invoke(root, env, 'finalize', 'full', visible='0')
+            finalize = self.invoke(root, env, 'finalize', 'last1', visible='0')
             output = self.combined(finalize)
             self.assertEqual(finalize.returncode, 0, output)
             self.assertIn('PY=<nanogpt_noise.scope>', output)
@@ -169,7 +170,7 @@ class OperatorScriptTests(unittest.TestCase):
 
     def test_scope_requires_completed_smoke(self):
         with self.fixture() as (root, _run_base, _run_base_shell, env):
-            result = self.invoke(root, env, 'scope', 'full', visible='0,1,2,3')
+            result = self.invoke(root, env, 'scope', 'last1', visible='0,1,2,3')
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('smoke', self.combined(result).lower())
 
@@ -180,7 +181,7 @@ class OperatorScriptTests(unittest.TestCase):
             smoke=self.invoke(root,first,'smoke',visible='0')
             self.assertEqual(smoke.returncode,0,self.combined(smoke))
             changed=dict(env,FAKE_INPUT_ID='changed-input')
-            formal=self.invoke(root,changed,'scope','full',visible='0,1,2,3')
+            formal=self.invoke(root,changed,'scope','last1',visible='0,1,2,3')
             self.assertNotEqual(formal.returncode,0)
             self.assertIn('current input',self.combined(formal))
 
@@ -197,7 +198,7 @@ class OperatorScriptTests(unittest.TestCase):
             for command in ('check', 'smoke', 'scope', 'finalize', 'status'):
                 self.assertIn(command, result.stdout)
             self.assertIn('INPUT_ROOT=/data/260010171/inputs', result.stdout)
-            self.assertIn('RUN_BASE=/data/260010171/results/nanogpt-v1.6', result.stdout)
+            self.assertIn('RUN_BASE=/data/260010171/results/nanogpt-v1.7', result.stdout)
             self.assertNotIn('260010189', result.stdout)
 
     def test_public_smoke_and_formal_shortcuts(self):
@@ -206,7 +207,7 @@ class OperatorScriptTests(unittest.TestCase):
                 root, env, 'scripts/run_smoke.sh', visible='0')
             self.assertEqual(smoke.returncode, 0, self.combined(smoke))
             self.assertTrue(
-                (run_base / 'smoke/1gpu/full-muon-node10/status.json').is_file())
+                (run_base / 'smoke/1gpu/last1-muon-node10/status.json').is_file())
 
             formal = self.invoke_script(
                 root, env, 'scripts/run_formal.sh', visible='0,1,2,3')
@@ -216,6 +217,30 @@ class OperatorScriptTests(unittest.TestCase):
             self.assertIn('PY=<nanogpt_noise.scope>', output)
             self.assertIn('PY=<finalize>', output)
             self.assertIn('FORMAL SCOPE FINALIZED', output)
+            self.assertIn('PY=<140>', output)
+            self.assertIn('PY=<279>', output)
+            self.assertNotIn('PY=<139>', output)
+
+    def test_last1_smoke_does_not_certify_other_scopes(self):
+        with self.fixture() as (root, _run_base, _run_base_shell, env):
+            smoke = self.invoke_script(root, env, 'scripts/run_last1_smoke.sh')
+            self.assertEqual(smoke.returncode, 0, self.combined(smoke))
+            output = self.combined(smoke)
+            self.assertEqual(output.count('PY=<nanogpt_noise.train>'), 4)
+            for optimizer in ('adamw', 'adam', 'sgd', 'muon'):
+                self.assertIn(f'last1-{optimizer}-node10', output)
+            wrong = self.invoke(root, env, 'scope', 'full', visible='0,1,2,3')
+            self.assertNotEqual(wrong.returncode, 0)
+            self.assertNotIn('PY=<nanogpt_noise.pool>', self.combined(wrong))
+            correct = self.invoke_script(root, env, 'scripts/run_last1.sh', visible='0,1,2,3')
+            self.assertEqual(correct.returncode, 0, self.combined(correct))
+
+    def test_missing_registration_rejected(self):
+        with self.fixture() as (root, run_base, _run_base_shell, env):
+            (run_base.parent/'inputs'/'registration.json').unlink()
+            result = self.invoke(root, env, 'check')
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('migrate old inputs', self.combined(result))
 
     def test_public_smoke_handles_repository_owner_mismatch(self):
         with self.fixture() as (root, _run_base, _run_base_shell, env):

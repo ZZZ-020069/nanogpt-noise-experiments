@@ -90,7 +90,7 @@ def code_identity():
     root = Path(__file__).resolve().parents[1]
     files = sorted((root/'nanogpt_noise').glob('*.py'))
     files += sorted((root/'docs').glob('nanogpt_experiment_design.md'))
-    hashes = {str(p.relative_to(root)):file_hash(p) for p in files}
+    hashes = {p.relative_to(root).as_posix():file_hash(p) for p in files}
     return dict(sha256=digest(hashes),files=hashes)
 
 

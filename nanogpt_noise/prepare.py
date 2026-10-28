@@ -7,6 +7,8 @@ import numpy as np
 from .artifacts import write_json,lock
 from .data import REVISION, freeze
 from .input_bundle import register_bundle, verify_bundle
+from .artifacts import read_json
+from .protocol import require_current_input
 
 
 def fill(stream,encoder,path,count):
@@ -65,7 +67,9 @@ def prepare_bundle(input_root, restart_incomplete=False):
     root=Path(input_root)
     registration=root/'registration.json'
     if registration.exists():
-        return verify_bundle(root)
+        input_id = verify_bundle(root)
+        require_current_input(read_json(root/'frozen-artifacts'/'identity.json'))
+        return input_id
     data=root/'openwebtext_subset'
     artifacts=root/'frozen-artifacts'
     prepare_corpus(data,restart_incomplete=restart_incomplete)
