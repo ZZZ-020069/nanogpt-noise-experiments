@@ -3,7 +3,7 @@ import argparse
 from pathlib import Path
 import shutil
 
-from .artifacts import file_hash, read_json, write_json
+from .artifacts import file_hash, read_json, write_json, lock
 from .protocol import SCOPES
 
 
@@ -74,6 +74,11 @@ def _job_directories(root):
 
 
 def prepare_scope(root, scope):
+    with lock(root):
+        return _prepare_scope(root,scope)
+
+
+def _prepare_scope(root, scope):
     root = Path(root)
     if root.resolve().name != scope:
         raise ValueError(f'scope output directory must be named exactly {scope}')
@@ -97,7 +102,7 @@ def prepare_scope(root, scope):
 
 
 def _manifest_files(root):
-    excluded = {'scope_manifest.json', '.lock'}
+    excluded = {'scope_manifest.json', '.lock', '.lease'}
     files = []
     for path in sorted(Path(root).rglob('*')):
         if not path.is_file() or path.name in excluded:
@@ -108,12 +113,18 @@ def _manifest_files(root):
 
 
 def finalize_scope(root, scope):
+    with lock(root):
+        return _finalize_scope(root,scope)
+
+
+def _finalize_scope(root, scope):
     root = Path(root)
     marker = read_json(root/'scope_run.json')
     if marker.get('scope') != scope:
         raise ValueError(f'{root} belongs to scope {marker.get("scope")}, not {scope}')
     leftovers = [path for path in root.rglob('*')
-                 if path.is_file() and (path.name == '.lock' or path.name.endswith('.tmp'))]
+                 if path.is_file() and path != root/'.lock'
+                 and (path.name == '.lock' or path.name.endswith('.tmp'))]
     if leftovers:
         raise ValueError(f'{leftovers[0]}: active/stale lock or atomic temporary file remains')
     expected_jobs = set(scope_indices(scope))

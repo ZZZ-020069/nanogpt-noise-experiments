@@ -221,6 +221,16 @@ class OperatorScriptTests(unittest.TestCase):
             self.assertIn('PY=<279>', output)
             self.assertNotIn('PY=<139>', output)
 
+    def test_restarting_finalized_scope_verifies_without_launching_pool(self):
+        with self.fixture() as (root,run_base,_shell,env):
+            (run_base/'last1').mkdir()
+            (run_base/'last1/scope_manifest.json').write_text('{}')
+            result=self.invoke_script(root,env,'scripts/run_formal.sh',visible='0,1,2,3')
+            self.assertEqual(result.returncode,0,self.combined(result))
+            self.assertIn('PY=<verify>',result.stderr)
+            self.assertNotIn('PY=<nanogpt_noise.pool>',result.stderr)
+            self.assertIn('ALREADY FINALIZED',result.stdout)
+
     def test_last1_smoke_does_not_certify_other_scopes(self):
         with self.fixture() as (root, _run_base, _run_base_shell, env):
             smoke = self.invoke_script(root, env, 'scripts/run_last1_smoke.sh')

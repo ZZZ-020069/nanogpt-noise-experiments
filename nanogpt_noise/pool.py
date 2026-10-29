@@ -128,6 +128,8 @@ def main():
         parser.error('--gpus must contain exactly four unique tokens')
 
     with lock(Path(args.output)/'launcher'):
+        if (Path(args.output)/'scope_manifest.json').exists():
+            raise RuntimeError('scope is already finalized; verify its manifest instead of training')
         serve(args, gpus)
 
 

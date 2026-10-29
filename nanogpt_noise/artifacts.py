@@ -5,8 +5,10 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import subprocess
 import tempfile
+import uuid
 
 
 def file_hash(path):
@@ -69,11 +71,54 @@ def save_checkpoint(path,value):
     atomic(path,lambda f:torch.save(value,f))
 
 
+def cleanup_atomic_temps(directory):
+    """Only call under the enclosing writer lock; match our mkstemp names."""
+    names={'.lock','latest.pt','final.pt','failure.pt','initial.pt','windows.pt',
+           'metadata.json','status.json','evaluations.json','identity.json','meta.json',
+           'search.json','steps.jsonl.gz','steps.compaction.json','preparation.json',
+           'registration.json','SHA256SUMS','scope_run.json','scope_manifest.json'}
+    for path in Path(directory).glob('*.tmp'):
+        match=re.fullmatch(r'(.+)\.[a-z0-9_]{8}\.tmp',path.name)
+        if (match and (match[1] in names or re.fullmatch(r'\d{6}\.json',match[1]))
+                and path.is_file()):
+            path.unlink()
+
+
 @contextlib.contextmanager
 def lock(directory):
     directory = Path(directory)
     directory.mkdir(parents=True,exist_ok=True)
     path = directory/'.lock'
+    if os.name == 'posix':
+        import fcntl
+        # Never unlink this inode: replacement would split writers across locks.
+        with (directory/'.lease').open('a+b') as lease:
+            try:
+                fcntl.flock(lease.fileno(),fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise RuntimeError(f'{path}: active or stale lock; another writer owns the kernel lease') from exc
+            except OSError as exc:
+                raise RuntimeError(f'{directory}: filesystem must support reliable flock; refusing unsafe lock fallback') from exc
+            try:
+                if path.exists():
+                    try:
+                        owner=read_json(path)
+                    except (ValueError,OSError) as exc:
+                        raise RuntimeError(f'{path}: legacy or unknown lock; verify no worker remains before manual recovery') from exc
+                    if not isinstance(owner,dict) or owner.get('format') != 'nanogpt-flock-v1':
+                        raise RuntimeError(f'{path}: legacy or unknown lock; manual recovery required')
+                    print(f'Recovering abandoned lock marker: {path}',flush=True)
+                cleanup_atomic_temps(directory)
+                write_json(path,dict(format='nanogpt-flock-v1',host=platform.node(),
+                                     pid=os.getpid(),token=uuid.uuid4().hex))
+                try:
+                    yield
+                finally:
+                    path.unlink(missing_ok=True)
+            finally:
+                fcntl.flock(lease.fileno(),fcntl.LOCK_UN)
+        return
+    # Windows test fallback: no PID/hostname guessing or automatic stale cleanup.
     try:
         fd = os.open(path,os.O_CREAT|os.O_EXCL|os.O_WRONLY)
     except FileExistsError:

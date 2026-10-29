@@ -49,7 +49,7 @@ def prepare_corpus(output, restart_incomplete=False):
                 raise RuntimeError('incomplete corpus found; rerun with --restart-incomplete after confirming no preparation job remains')
             for path in incomplete:
                 path.unlink(missing_ok=True)
-        if any(path.name!='.lock' for path in output.iterdir()):
+        if any(path.name not in ('.lock','.lease') for path in output.iterdir()):
             raise ValueError('use a fresh directory; corpus preparation never overwrites unknown files')
         encoder=tiktoken.get_encoding('gpt2')
         stream=iter(load_dataset('Skylion007/openwebtext',split='train',streaming=True,
@@ -78,7 +78,7 @@ def prepare_bundle(input_root, restart_incomplete=False):
             if read_json(marker) != expected:
                 raise ValueError('preparation protocol changed; use a fresh INPUT_ROOT')
         else:
-            if any(path.name != '.lock' for path in root.iterdir()):
+            if any(path.name not in ('.lock','.lease') for path in root.iterdir()):
                 raise ValueError('fresh preparation requires an empty INPUT_ROOT; existing files are preserved')
             write_json(marker, expected)
         if (root/'registration.json').exists():

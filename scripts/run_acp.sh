@@ -86,5 +86,5 @@ case "$mode" in
     printf 'INPUT BUNDLE REGISTERED: %s\n' "$INPUT_ROOT"
     ;;
   smoke) bash scripts/run_smoke.sh "${2:-last1}" ;;
-  formal) bash scripts/run_formal.sh "${2:-last1}" ;;
+  formal) exec bash scripts/run_formal.sh "${2:-last1}" ;;
 esac

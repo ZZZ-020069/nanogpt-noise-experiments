@@ -3,6 +3,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+source "$REPO_ROOT/scripts/process_control.sh"
 if (( $# > 1 )); then
   printf 'Usage: bash scripts/run_formal.sh [full|last1|last2|last3|last6|last12]\n' >&2
   exit 2
@@ -12,8 +13,13 @@ scope="${1:-last1}"
 result_root="${RUN_BASE:-/data/260010171/results/nanogpt-v1.8}"
 
 # set -e guarantees that finalization is never attempted after a failed pool.
-bash "$REPO_ROOT/scripts/h100.sh" scope "$scope"
-bash "$REPO_ROOT/scripts/h100.sh" finalize "$scope"
+if [[ -f "$result_root/$scope/scope_manifest.json" ]]; then
+  run_child "${PYTHON:-python}" -m nanogpt_noise.scope verify --runs "$result_root/$scope"
+  printf 'FORMAL SCOPE ALREADY FINALIZED: %s/%s\n' "$result_root" "$scope"
+  exit 0
+fi
+run_child bash "$REPO_ROOT/scripts/h100.sh" scope "$scope"
+run_child bash "$REPO_ROOT/scripts/h100.sh" finalize "$scope"
 
 printf '\nFORMAL SCOPE FINALIZED: %s/%s\n' "$result_root" "$scope"
 printf '%s\n' \

@@ -39,37 +39,35 @@ bash scripts/run_acp.sh smoke last1
 
 已有兼容环境的等价入口：`bash scripts/run_last1_smoke.sh`。不自动安装环境。
 
-## 4. 四张 H100：首次启动 last1
+## 4. 四张 H100：提交训练任务
+
+完成数据制备和冒烟后，在 ACP 的启动命令中提交以下内容。第一次启动和平台停止后的再次启动，使用完全相同的命令：
 
 ```bash
-bash scripts/run_acp.sh formal last1
+export INPUT_ROOT=/data/260010171/inputs-v1.8
+export RUN_BASE=/data/260010171/results/nanogpt-v1.8-platform
+exec bash /data/260010171/nanogpt-noise-experiments/scripts/run_acp.sh formal last1
 ```
 
-四卡分别领取 jobs 140–279，每个 job 内顺序完成八个候选；只运行 last1。省略 scope 也默认 last1。完成后自动 finalize 并输出 `FORMAL SCOPE FINALIZED`，不会运行下一个 scope。
+smoke 也必须使用这里相同的 INPUT_ROOT、RUN_BASE 和提交版本；若之前已在旧目录冒烟，先在新 RUN_BASE 重新冒烟。环境可通过相同的 PYTHON 或 ENV_PREFIX 指定。输入、结果和需复用的环境必须放在平台持久化存储中；每次启动均挂载同一个目录。不要在每次启动命令里自动 git pull、重新制备数据或更换结果目录。
 
-已有兼容环境的等价入口：`bash scripts/run_last1.sh`。micro 默认 4；全局 batch 始终为 512×1024 tokens。需要暂停或继续时，使用下一节的命令。
+平台配置为一个实例/worker分配四张H100，仓库内部启动四个独立单卡训练进程；不要再由平台复制成四个四卡实例。四卡领取jobs140–279，各job顺序完成八个候选，仅运行last1。完成后自动finalize并停止；已finalize的目录再次启动只校验交付文件，不重新训练。
 
-## 5. 暂停与继续
+这里使用 exec，使启动shell被仓库入口替换，让平台停止信号能够到达仓库的监督进程。截图中的外部 `/data/260010171/run_v18_ready.sh` 不在仓库，尚未核对；如继续使用它，应让最后一条训练启动命令也通过exec转入上述仓库入口，并保持相同路径和代码版本。
 
-学长需要临时用卡时，在另一终端进入相同仓库并保持相同 RUN_BASE：
+## 5. 平台停止与再次启动
 
-```bash
-bash scripts/run_acp.sh pause last1
-```
+学长需要临时用卡时，直接使用平台的停止任务操作。无需在运行中另开终端执行命令。
 
-等待 `SCOPE QUIESCENT`，确认训练进程已退出后再交出GPU。正在运行的候选会完成当前步并保存，之后不再领取新任务。默认等待300秒；超时保留暂停请求，不强杀，也不代表已经释放GPU。训练端的75退出码属于可恢复暂停，可能显示 ACP FAILED，不是优化器数值失败。
+- 如果平台先发送TERM/INT并给予足够保存时间，监督脚本转发信号，训练完成当前step并保存，等待全部训练进程退出后结束；停止时不执行finalize。
+- 如果平台直接强杀、宽限期太短或机器故障，只能从最近已持久保存的checkpoint恢复，通常最多重算活跃候选最近约191步/100M tokens。实际宽限期和保存耗时仍须目标平台验收。
+- 重新获得算力后，启动原任务或重新提交第4节相同命令。已完成候选直接复用，未完成候选读取断点；不需要再次生成输入，也不需要手工把formal换成resume。
 
-重新获得四张GPU后，用相同代码、软件环境、输入、micro和结果目录继续：
+Linux使用操作系统flock独占锁。新版本进程被强杀后，内核锁自动释放；重启先取得同一 `.lease` 的独占权，再回收本版本遗留 `.lock` 标记。活跃写入者仍会阻止第二个任务接管。**不要删除 `.lease` 文件**；它是持久的锁载体。文件系统不支持flock会明确报错，不降级为不安全的自动删锁。旧版文本锁或来源不明的锁仍需确认原任务彻底停止后人工处理。
 
-```bash
-bash scripts/run_acp.sh resume last1
-```
+输入、checkpoint、代码、PyTorch/CUDA构建、micro-batch和RUN_BASE必须与原轨迹一致。正式开始后固定commit，禁止为恢复修改metadata、预算或学习率。之前版本已丢失的checkpoint不能由本修复恢复。停止75退出码属于可恢复中断，可能被平台显示为失败；如启用自动重试，人工停止应由平台保持停止状态，不要把所有非零退出无条件无限重试。
 
-主动执行 pause 后，必须使用 resume 解除暂停标记并续训；直接执行 formal 会拒绝启动。若是意外中断且没有暂停标记，在确认原进程已退出、处理遗留锁后，也可重新执行 formal 从原目录的 checkpoint 接续。两者共用同一套续训逻辑。恢复时保持相同 commit、输入、软件环境、micro-batch 和输出目录，禁止修改 metadata、预算或学习率。
-
-无需再次制备输入；完成候选不重训，未完成候选从checkpoint接续。断电/强制终止时通常最多重算最近约191步，遗留.lock需先确认无活跃进程再人工处理。输入与结果必须放在平台暂停/销毁任务后仍持久保存的目录；仅关闭临时容器但丢失磁盘不能恢复。
-
-v1.8断点修复保留输入身份，旧版已登记输入可以继续使用；更新代码后应在正式运行前重新smoke。不能把旧代码训练轨迹直接改metadata迁成新轨迹。
+可选：有终端或能访问同一结果目录时，仍可执行 `bash scripts/run_acp.sh pause last1`，等待 `SCOPE QUIESCENT` 后交出GPU；这种显式文件暂停需用 `bash scripts/run_acp.sh resume last1` 清除暂停标记。它与平台停止流程分别使用，平台停止不会自动写入pause.request。
 
 ## 6. 下载并分析后再决定下一步
 
@@ -87,7 +85,7 @@ D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8\last1
 升级本次断点修复时，如果此前已经运行过旧提交的 smoke，请保留旧结果并先选择新结果目录，再冒烟；之后所有启动、暂停、继续命令均使用这个 RUN_BASE：
 
 ```bash
-export RUN_BASE=/data/260010171/results/nanogpt-v1.8-resume-fix
+export RUN_BASE=/data/260010171/results/nanogpt-v1.8-platform
 bash scripts/run_acp.sh smoke last1
 ```
 

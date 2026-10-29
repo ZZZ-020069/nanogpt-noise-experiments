@@ -13,7 +13,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from . import optim
 from .artifacts import (read_json,write_json,save_checkpoint,tensor_hash,digest,
-                        environment,code_identity,lock)
+                        environment,code_identity,lock,cleanup_atomic_temps)
 from .data import batch,verify
 from .model import GPT,Shape,set_scope
 from .noise import inject,norm,ratio
@@ -183,6 +183,7 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
     # A hard interruption can leave diagnostics beyond the durable checkpoint.
     # These updates will be replayed; do not let stale records survive a later failure.
     if rt.rank==0:
+        cleanup_atomic_temps(output/'steps')
         for path in (output/'steps').glob('*.json'):
             if path.stem.isdigit() and int(path.stem)>step:
                 path.unlink()

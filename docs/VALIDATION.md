@@ -1,3 +1,16 @@
+# v1.8 platform stop/restart validation — 2026-10-29
+
+The primary ACP workflow is now a batch job: submit the formal startup command, stop through the platform, and start the same command with the same persistent volumes and frozen software/input identity.
+
+- Windows Python 3.13.5 / PyTorch 2.9.1+cpu: 113 tests discovered, **106 passed, 7 POSIX-only tests skipped**, in 183.284 seconds. Log: workspace `timing-evidence/platform-restart-windows.log`. Python compilation, all Bash syntax, design synchronization and whitespace checks passed.
+- New POSIX tests run under Linux CI: nonblocking lease exclusivity, stable lease inode, abandoned owner recovery across container hostnames, legacy/malformed marker refusal, unsupported-filesystem refusal, and removal of only recognized atomic temporary files.
+- Two Linux subprocess integrations use the real Bash formal supervisor and real tiny CPU training/checkpoints. Only H100 dispatch is replaced by a CPU fixture. TERM is sent solely to the outer supervisor PID and must reach training, save a positive-step checkpoint, wait for exit and skip finalization. A separate SIGKILL of the owned test process group leaves owner markers; restarting the same command must reacquire the kernel leases, recover and produce model/optimizer states identical to uninterrupted reference training.
+- Persistent `.lease` files are excluded from scope delivery manifests. A finalized scope startup verifies existing artifacts without launching another pool. Existing data preparation, search replay, retention, four-optimizer resume and optional pause/resume regression coverage is retained.
+- Linux CI results must be checked for the release commit; Windows skips are not evidence of Linux signal correctness. H100/ACP stop grace period, real save duration and shared-filesystem cross-container flock semantics still require a short target-platform acceptance run.
+- The external `/data/260010171/run_v18_ready.sh` was not provided and is outside this repository. The documented platform command execs directly into the maintained ACP entrypoint. No actual GPU training or real corpus preparation was started.
+
+---
+
 # v1.8 resume maintenance validation — 2026-10-28
 
 The earlier 95-test release missed search-level checkpoint retention on restart. An isolated reproduction showed replay deleting a pending candidate's latest checkpoint and a later final winner. This maintenance change limits pruning to already replayed terminal candidates; it does not change scientific parameters or require regenerating registered v1.8 inputs.

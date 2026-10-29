@@ -66,10 +66,10 @@ bash scripts/run_acp.sh smoke last1
 
 smoke包括节点(.03,.01)、中心LR、初末固定窗口评估、冻结校验和及checkpoint。四项全部成功才写入代码和输入验收标记；正式入口还核对scope、micro、协议、软件版本与候选metadata。smoke保存为独立的短前缀结果，不参加正式排名。8步不检验收敛，也不足以保证多日吞吐。
 
-四张H100，首次启动last1：
+四张H100，在ACP提交训练或停止后再次启动（同一命令）：
 
 ```bash
-bash scripts/run_acp.sh formal last1
+exec bash /data/260010171/nanogpt-noise-experiments/scripts/run_acp.sh formal last1
 # 已激活兼容环境的等价入口：bash scripts/run_last1.sh
 ```
 
@@ -92,7 +92,9 @@ bash scripts/h100.sh status last1
 tail -f /data/260010171/results/nanogpt-v1.8/last1/launcher/job_0140.log
 ```
 
-主动暂停（另开终端，设置与训练相同的 RUN_BASE）：
+ACP 无交互终端时，以平台“停止任务→再次启动原任务”为主流程；每次使用相同提交、环境、INPUT_ROOT、RUN_BASE和持久存储挂载。启动命令用exec转入仓库入口，监督脚本将TERM/INT转发给训练进程并等待保存；平台直接强杀或宽限期不足则回退到最近周期checkpoint。实际停止宽限期尚未实机核验。不要在每次启动时自动git pull或重新生成输入。平台停止不产生pause.request，因此再次提交formal即可续训。已finalize的目录再次启动只验证manifest。
+
+可选的显式文件暂停（仅适用于能执行额外命令、访问同一 RUN_BASE 的环境）：
 
 ```bash
 bash scripts/run_acp.sh pause last1
@@ -103,7 +105,7 @@ bash scripts/run_acp.sh resume last1
 
 pause 停止分配新任务，并让活跃候选完成当前 optimizer step、保存完整状态后退出；不会重新制备输入。暂停文件保留到显式 resume，后者只在获得独占调度锁后清除请求。pause 不安装依赖，不要求 CUDA；默认等待300秒，PAUSE_WAIT_SECONDS可调整，超时不会强杀进程，也不表示GPU已经空闲。训练端以75结束属于可恢复暂停，包装器可能打印 ACP FAILED，但不是数值发散，也不会执行finalize。
 
-断电、SIGKILL或硬件错误可丢失最近一次周期checkpoint之后的进度，通常最多重算约191步/100M tokens。已完成候选和后续候选断点在搜索重放时保留。硬杀可能留下launcher、job或candidate的.lock；先确认所有相关进程都已退出，再处理对应遗留锁，程序不自动解锁。有进度但checkpoint缺失或最终winner缺失会报错，不静默从零开始。
+断电、SIGKILL或硬件错误可丢失最近一次周期checkpoint之后的进度，通常最多重算约191步/100M tokens。已完成候选和后续候选断点在搜索重放时保留。Linux进程被强杀后内核flock自动释放，重启获得独占权后自动回收本版本的.lock标记；旧版或来源不明的锁仍需确认原进程退出后人工处理。不要删除持久的.lease文件，文件系统不支持flock会报错。有进度但checkpoint缺失或最终winner缺失会报错，不静默从零开始。
 
 输入、结果与环境必须放在平台停止/销毁任务后仍保留的目录。若使用nohup，将控制台日志放在RUN_BASE之外或其父目录并使用绝对路径；平台任务中通常直接用启动命令。恢复期间不得更新代码或依赖。此修复不改变v1.8输入，可复用已制备输入；从旧提交升级须在正式训练前重新冒烟，不能直接改已有轨迹的metadata来兼容新代码。
 
@@ -139,7 +141,7 @@ python -m nanogpt_noise.analyze --runs /data/260010171/results/nanogpt-v1.8/last
 升级本次断点修复时，如果此前已经运行过旧提交的 smoke，请保留旧结果并先选择新结果目录，再冒烟；之后所有启动、暂停、继续命令均使用这个 RUN_BASE：
 
 ```bash
-export RUN_BASE=/data/260010171/results/nanogpt-v1.8-resume-fix
+export RUN_BASE=/data/260010171/results/nanogpt-v1.8-platform
 bash scripts/run_acp.sh smoke last1
 ```
 

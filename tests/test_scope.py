@@ -43,6 +43,7 @@ class ScopeTests(unittest.TestCase):
         job = root/'job_0000'
         candidate = job/'candidate_00'
         candidate.mkdir(parents=True)
+        (candidate/'.lease').write_bytes(b'kernel lock inode; not an artifact')
         (candidate/'steps.jsonl.gz').write_bytes(b'archive')
         write_json(candidate/'steps.compaction.json', {'count': 4})
         (candidate/'final.pt').write_bytes(b'checkpoint')
@@ -54,6 +55,7 @@ class ScopeTests(unittest.TestCase):
         with patch('nanogpt_noise.scope.scope_indices', return_value=range(1)):
             manifest = finalize_scope(root, 'full')
             self.assertEqual(manifest['file_count'], len(manifest['files']))
+            self.assertNotIn('job_0000/candidate_00/.lease',[item['path'] for item in manifest['files']])
             verified = verify_scope(root)
             self.assertEqual(verified['scope'], 'full')
             (candidate/'final.pt').write_bytes(b'tampered')
