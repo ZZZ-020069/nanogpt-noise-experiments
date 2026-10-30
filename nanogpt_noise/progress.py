@@ -80,7 +80,7 @@ def snapshot(root,scope,execution=None,event='periodic'):
                 scope=scope,event=event,kind='live_stage_report',
                 snapshot_note='Read-only observation of atomic files; not a transactional training checkpoint. '
                               'Incomplete candidates/searches are not final optimizer rankings.',
-                order='sigma1-major, sigma2-minor; four optimizer searches per row; row barrier',
+                order='sigma1-major, sigma2-minor; row-priority queue; idle GPU claims next search',
                 cohort=cohort,rows=rows,candidates=candidates,execution=execution or {},
                 counts=dict(rows_complete=sum(r['complete'] for r in rows),
                             cells_complete=sum(c['search_complete'] for c in finals.values()),
@@ -149,6 +149,7 @@ class ScopeReporter:
         self.output=Path(output) if output else self.root.parent/'reports'/scope
         self.stop_event=threading.Event();self.writer=threading.Lock();self.thread=None
         self.announced=set()
+        self.wake=threading.Event()
 
     def publish(self,event='periodic'):
         with self.writer:
@@ -209,13 +210,22 @@ class ScopeReporter:
                 try: write_json(self.output/'report_error.json',dict(error=repr(exc),updated_at=datetime.now(timezone.utc).isoformat()))
                 except OSError: pass
 
+    def request_update(self):
+        """Wake the reporter without blocking GPU workers on report I/O."""
+        self.wake.set()
+
     def start(self):
         self.publish('startup')
         def loop():
-            while not self.stop_event.wait(self.interval): self.publish()
+            while not self.stop_event.is_set():
+                notified=self.wake.wait(self.interval)
+                self.wake.clear()
+                if self.stop_event.is_set(): break
+                self.publish('row_complete' if notified else 'periodic')
         self.thread=threading.Thread(target=loop,name='stage-reporter',daemon=True);self.thread.start()
 
     def close(self,event):
         self.stop_event.set()
+        self.wake.set()
         if self.thread: self.thread.join()
         self.publish(event)

@@ -1,3 +1,5 @@
+> Historical plan: the row barrier was superseded by 2026-10-30-dynamic-rows.md after user clarification.
+
 # Row scheduling and automatic progress reports
 
 **Goal:** Fill the 35-row response table in sigma1-major/sigma2-minor order, four optimizers per row, with reports generated inside the batch task.

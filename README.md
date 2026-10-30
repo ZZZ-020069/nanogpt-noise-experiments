@@ -73,7 +73,7 @@ exec bash /data/260010171/nanogpt-noise-experiments/scripts/run_acp.sh formal la
 # 已激活兼容环境的等价入口：bash scripts/run_last1.sh
 ```
 
-默认scope也是last1。四个独立worker按噪声坐标逐行完成jobs140–279，运行35节点×4优化器，各执行5＋3搜索。全部终态后自动finalize并停止，不启动下一个scope。未来其他scope仍可显式指定，但必须先完成对应scope的smoke，当前任务不包括它们。
+默认scope也是last1。四个独立worker从按噪声坐标行优先排列的动态队列领取jobs140–279，运行35节点×4优化器，各执行5＋3搜索。全部终态后自动finalize并停止，不启动下一个scope。未来其他scope仍可显式指定，但必须先完成对应scope的smoke，当前任务不包括它们。
 
 GPU由平台分配；CUDA_VISIBLE_DEVICES必须列出四个不同的GPU编号/UUID。程序不申请GPU、不登录服务器、不自行启动下一scope。单个候选默认micro4；改micro必须在smoke前确定并保持全局batch一致，运行后不可换布局恢复。
 
@@ -145,10 +145,10 @@ export RUN_BASE=/data/260010171/results/nanogpt-v1.8-rows
 bash scripts/run_acp.sh smoke last1
 ```
 
-已登记的 INPUT_ROOT 不变，无需重新制备语料；正式开始后固定提交，不能靠切换 RUN_BASE 把旧轨迹恢复成新代码轨迹。
+若上述RUN_BASE已被旧提交使用，另选空目录（例如nanogpt-v1.8-rows-dynamic），smoke和正式提交均设置为该目录。已登记的 INPUT_ROOT 不变，无需重新制备语料；正式开始后固定提交，不能靠切换 RUN_BASE 把旧轨迹恢复成新代码轨迹。
 
 
-自动阶段报告随正式任务一起启动，无需在ACP中途输入命令。噪声行固定按sigma1={0,.03,.1,.3,.9}外层、sigma2={0,.0001,.001,.01,.1,1,10}内层升序执行。先填完一行四优化器，再进入下一行；行内较快GPU会等待，实际工期需结合报告更新。
+自动阶段报告随正式任务一起启动，无需在ACP中途输入命令。噪声行固定按sigma1={0,.03,.1,.3,.9}外层、sigma2={0,.0001,.001,.01,.1,1,10}内层升序执行。队列依次排列每行的AdamW、Adam、SGD、Muon搜索；每个搜索含八个LR候选。哪张GPU完成搜索就领取下一个任务，不等待同行其他优化器，也不固定GPU与优化器的对应关系。不同节点可以同时运行，完成顺序可以不同于排队顺序；整行齐全后再报告完整行排名。报告在后台生成，不阻塞GPU领任务，实际工期需结合实测更新。
 
 报告位于 `RUN_BASE/reports/last1/`：默认每5分钟更新 `latest.zip`、`latest.html` 和 `latest.json`，每行结束及可控退出时额外更新。ZIP内有可离线打开的HTML曲线/诊断、35行总表CSV、候选CSV和完整JSON；每个完成行保留一份 `row_00.zip` 至 `row_34.zip`。不含模型权重。需要在中途分析时，使用平台允许的持久存储访问/下载方式取回latest.zip，解压打开report.html；本机仍直接接收到D盘。平台若不提供运行中的文件下载，可以先看平台日志中的 `[report]` 摘要，并在停止后读取最近报告。
 

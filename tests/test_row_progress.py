@@ -25,24 +25,40 @@ class RowSchedulingTests(unittest.TestCase):
             self.assertEqual(sorted(i for batch in batches for i in batch),list(range(first,first+140)))
             self.assertEqual([grid()[batch[0]]['node'] for batch in batches],list(range(35)))
 
-    def test_next_row_waits_for_all_four_and_stop_blocks_following_row(self):
-        completed=set();seen=[];guard=threading.Lock();stop=threading.Event()
-        first=set(row_batches(140,279)[0])
+    def test_idle_gpu_runs_later_rows_while_first_row_is_blocked(self):
+        release=threading.Event();entered=threading.Event();guard=threading.Lock()
+        seen=[];finished=[];owners={};complete=set()
         def runner(gpu,job):
-            with guard:
-                if grid()[job]['node']>0: self.assertTrue(first<=completed)
-                seen.append(job)
-            time.sleep(.02 if job==140 else .001)
-            with guard: completed.add(job)
+            with guard: seen.append(job);owners[job]=gpu
+            if job==140:
+                entered.set()
+                if not release.wait(5): return 1
+            else:
+                if not entered.wait(5): return 1
+            with guard: complete.add(job)
             return 0
-        def finished(batch,elapsed):
-            if grid()[batch[0]]['node']==1: stop.set()
-        result=run_rows(140,279,['0','1','2','3'],runner,stop_requested=stop.is_set,on_row_complete=finished)
+        def row_done(batch,elapsed):
+            with guard:
+                finished.append((grid()[batch[0]]['node'],set(batch)<=complete))
+                if grid()[batch[0]]['node']==34: release.set()
+        result=run_rows(140,279,['0','1','2','3'],runner,on_row_complete=row_done)
         self.assertEqual(result,[])
-        self.assertEqual(len(seen),8)
-        self.assertEqual({grid()[i]['node'] for i in seen},{0,1})
+        self.assertEqual(sorted(seen),list(range(140,280)))
+        self.assertEqual(len(finished),35)
+        self.assertTrue(all(valid for _,valid in finished))
+        self.assertEqual(finished[-1][0],0)
+        self.assertNotEqual(owners[140],owners[174])
 
-    def test_failure_never_advances_to_next_row(self):
+    def test_one_gpu_claims_exact_row_priority_and_stop_prevents_more_dispatch(self):
+        seen=[];stop=threading.Event()
+        def runner(gpu,job):
+            seen.append(job)
+            if len(seen)==6: stop.set()
+            return 0
+        self.assertEqual(run_rows(140,279,['0'],runner,stop_requested=stop.is_set),[])
+        self.assertEqual(seen,[140,175,210,245,141,176])
+
+    def test_immediate_failure_stops_dispatch(self):
         seen=[]
         def runner(gpu,job): seen.append(job);return 75
         result=run_rows(140,279,['0','1','2','3'],runner)
@@ -111,6 +127,20 @@ class ReportTests(unittest.TestCase):
             report=json.loads(z.read('report.json'))
             self.assertIn(report['generation'],z.read('report.html').decode())
         self.assertFalse(reporter.thread.is_alive())
+
+    def test_completion_notification_runs_on_reporter_thread(self):
+        reporter=ScopeReporter(self.root,'last1',lambda:{},interval=60)
+        notified=threading.Event();threads=[]
+        def publish(event='periodic'):
+            if event=='row_complete':
+                threads.append(threading.current_thread().name);notified.set()
+        with patch.object(reporter,'publish',side_effect=publish):
+            reporter.start()
+            try:
+                reporter.request_update()
+                self.assertTrue(notified.wait(2))
+                self.assertEqual(threads,['stage-reporter'])
+            finally: reporter.close('exit')
 
     def test_mixed_or_tampered_evidence_keeps_previous_report_and_exposes_error(self):
         self.candidate(140,0,dict(x=-1.,reason='initial'))

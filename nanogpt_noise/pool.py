@@ -25,13 +25,23 @@ def row_batches(start,end):
 
 
 def run_rows(start,end,gpus,runner,on_failure=None,stop_requested=None,on_row_complete=None):
-    for batch in row_batches(start,end):
-        if stop_requested is not None and stop_requested(): return []
-        started=time.monotonic()
-        failures=run_pool(batch,gpus,runner,on_failure,stop_requested)
-        if failures or (stop_requested is not None and stop_requested()): return failures
-        if on_row_complete: on_row_complete(batch,time.monotonic()-started)
-    return []
+    batches=row_batches(start,end)
+    membership={job:n for n,batch in enumerate(batches) for job in batch}
+    guard=threading.Lock();started={};completed={}
+    def tracked(gpu,job):
+        row=membership[job]
+        with guard: started.setdefault(row,time.monotonic())
+        code=runner(gpu,job)
+        finished=False
+        with guard:
+            if code==0:
+                completed.setdefault(row,set()).add(job)
+                finished=len(completed[row])==len(batches[row])
+            elapsed=time.monotonic()-started[row]
+        if finished and on_row_complete: on_row_complete(batches[row],elapsed)
+        return code
+    return run_pool([job for batch in batches for job in batch],gpus,tracked,
+                    on_failure,stop_requested)
 
 
 def run_pool(jobs, gpus, runner, on_failure=None, stop_requested=None):
@@ -178,9 +188,11 @@ def serve(args, gpus):
     def stopping():
         return interrupted.is_set() or pause_file.exists()
     runner = SubprocessRunner(args, Path(args.output)/'launcher',stop_requested=stopping)
-    execution=dict(policy='sigma1-major-row-barrier-v1',row_timings=[])
+    execution=dict(policy='sigma1-major-dynamic-v1',row_timings=[])
+    execution_lock=threading.RLock()
     def runtime_snapshot():
-        return {**execution,**runner.snapshot()}
+        with execution_lock: timing=dict(execution,row_timings=list(execution['row_timings']))
+        return {**timing,**runner.snapshot()}
     reporter=ScopeReporter(args.output,grid()[args.start]['scope'],runtime_snapshot)
 
     def stop(signum, _frame):
@@ -196,12 +208,10 @@ def serve(args, gpus):
     try:
         reporter.start()
         def row_complete(batch,elapsed):
-            states=runner.snapshot()['jobs']
-            busy=sum(states.get(str(i),{}).get('elapsed_seconds',0) for i in batch)
-            execution['row_timings']=execution['row_timings']+[
-                dict(node=grid()[batch[0]]['node'],wall_seconds=elapsed,
-                     idle_gpu_seconds=max(0,len(gpus)*elapsed-busy))]
-            reporter.publish('row_complete')
+            with execution_lock:
+                execution['row_timings'].append(
+                    dict(node=grid()[batch[0]]['node'],span_seconds=elapsed))
+            reporter.request_update()
         failures = run_rows(args.start,args.end,gpus,runner,
                             on_failure=stop_on_failure,stop_requested=stopping,on_row_complete=row_complete)
         if pause_file.exists():

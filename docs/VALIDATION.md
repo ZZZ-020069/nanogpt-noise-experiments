@@ -1,4 +1,8 @@
-# v1.8 row scheduling and automatic stage reports — 2026-10-30
+# Dynamic row-priority correction — 2026-10-30
+
+The single queue is ordered by sigma1/sigma2 node, then optimizer. Idle GPUs claim the next search without a row barrier. Row completion wakes the background reporter; overlapping row spans are not idle-GPU estimates. Stable IDs and scientific settings are unchanged. Windows Python 3.13.5 / PyTorch 2.9.1+cpu: 124 tests discovered, 117 passed and seven POSIX-only skips in 238.351 seconds. Log: workspace timing-evidence/dynamic-rows-full.log. The blocked-first-row test proves later rows finish without waiting, all 140 IDs run once, and row callbacks occur only after their searches complete. Exact queue priority, pause/failure dispatch and background report notification pass. Bash syntax, compilation, design synchronization and whitespace checks pass. No GPU training was started; Linux CI is checked separately after push.
+
+# Historical row-barrier release (superseded above) — 2026-10-30
 
 Rows follow sigma1-major/sigma2-minor order. Each row waits for all four optimizer searches before advancing; job IDs, eight-candidate search, 2B schedule and input identity remain unchanged. Strict barriers introduce possible GPU idle time, so the old 10–15 day estimate is not newly certified.
 
