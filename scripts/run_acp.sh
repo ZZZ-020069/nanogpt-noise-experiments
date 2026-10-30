@@ -77,6 +77,10 @@ printf 'ACP Python: %s\n' "$PYTHON"
 # Dependencies were verified above. Do not let editable installation replace
 # CUDA PyTorch, or pull CPU wheels from a platform mirror.
 "$PYTHON" -m pip install --no-deps --no-cache-dir -e "$REPO_ROOT"
+if [[ "${NANOGPT_SWANLAB:-0}" == 1 ]]; then
+  [[ -n "${SWANLAB_API_KEY:-}" ]] || { echo 'SWANLAB_API_KEY is required' >&2; exit 2; }
+  "$PYTHON" -m pip install --no-cache-dir 'swanlab>=0.6,<1'
+fi
 printf 'ACP ENVIRONMENT READY\n'
 case "$mode" in
   prepare) ;;

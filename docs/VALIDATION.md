@@ -1,3 +1,7 @@
+# SwanLab integration — 2026-10-30
+
+Local full suite: 127 tests, 120 passed / 7 POSIX skips, 237.529 seconds (timing-evidence/swanlab-full.log). After uploader lifecycle hardening, five focused telemetry tests passed, including a real spawned process with a local SDK substitute. Final suite has 129 tests; Linux CI validates the release. Tests cover finite scalar filtering, independent diagnostic/evaluation steps, disabled mode, missing credentials, SDK calls and bounded child shutdown. Actual SwanLab cloud authentication, network delivery and SDK compatibility require the documented target smoke plus webpage check; no API key was supplied locally. No GPU training started.
+
 # Dynamic row-priority correction — 2026-10-30
 
 The single queue is ordered by sigma1/sigma2 node, then optimizer. Idle GPUs claim the next search without a row barrier. Row completion wakes the background reporter; overlapping row spans are not idle-GPU estimates. Stable IDs and scientific settings are unchanged. Windows Python 3.13.5 / PyTorch 2.9.1+cpu: 124 tests discovered, 117 passed and seven POSIX-only skips in 238.351 seconds. Log: workspace timing-evidence/dynamic-rows-full.log. The blocked-first-row test proves later rows finish without waiting, all 140 IDs run once, and row callbacks occur only after their searches complete. Exact queue priority, pause/failure dispatch and background report notification pass. Bash syntax, compilation, design synchronization and whitespace checks pass. No GPU training was started; Linux CI is checked separately after push.

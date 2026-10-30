@@ -97,3 +97,14 @@ bash scripts/run_acp.sh smoke last1
 报告位于 `RUN_BASE/reports/last1/`：默认每5分钟更新 `latest.zip`、`latest.html` 和 `latest.json`，每行结束及可控退出时额外更新。ZIP内有可离线打开的HTML曲线/诊断、35行总表CSV、候选CSV和完整JSON；每个完成行保留一份 `row_00.zip` 至 `row_34.zip`。不含模型权重。需要在中途分析时，使用平台允许的持久存储访问/下载方式取回latest.zip，解压打开report.html；本机仍直接接收到D盘。平台若不提供运行中的文件下载，可以先看平台日志中的 `[report]` 摘要，并在停止后读取最近报告。
 
 未完成格子只展示进度，八候选搜索完成后才填最终loss/LR；四种优化器均完成该行后才展示完整行排名。报告包括生成时间、generation和诊断所属步数；不是同步的跨GPU checkpoint，不将前缀排名当作最终结论。`report_error.json`或 `[report] ERROR` 表示报告更新失败，上次快照保留，训练继续按原协议执行。平台强杀可能来不及生成退出报告，下次同命令启动会重建。latest.zip是同一generation的完整快照，优先下载该文件。
+
+
+## SwanLab在线观察
+
+在ACP任务环境中设置NANOGPT_SWANLAB=1、SWANLAB_PROJ_NAME=nanogpt-noise，并以密钥变量设置SWANLAB_API_KEY。可选SWANLAB_WORKSPACE指定有权限的团队。Key不写入仓库或命令日志。run_acp入口在启用时安装SwanLab；正式运行期间保持环境固定，不主动升级依赖。直接使用其他入口时须自行安装swanlab>=0.6,<1。
+
+更新本提交后，复用已登记INPUT_ROOT，选择空RUN_BASE，例如/data/260010171/results/nanogpt-v1.8-swanlab。在每次任务中保持这些变量相同。先执行bash scripts/run_acp.sh smoke last1，确认SMOKE PASSED，并在SwanLab项目中看到四个smoke记录及evaluation/val、progress/step，再提交exec bash /data/260010171/nanogpt-noise-experiments/scripts/run_acp.sh formal last1。仅SMOKE PASSED不代表网络上传成功，须人工核对网页；连接失败可从平台日志查看[swanlab]提示。
+
+每候选每次启动一个独立上传记录，名称包括mode/scope/optimizer/node/candidate/attempt；config记录training_run_id和resumed_from_step。恢复后以training_run_id对应同一科学轨迹，用attempt区分回退重算，不能把上传记录数量当候选数量。横轴默认上传序号，分析时改用progress/tokens；evaluation指标附带其自身step/tokens，diagnostic/step标明诊断时刻。smoke与formal通过mode区分。上传指标为观察数据，最新评估值在两次评估之间保持；精确固定窗口曲线及35×4完整排名仍以本地reports包为准。
+
+上传在独立进程，队列有界；断网、上传落后或关闭超时会提示，云端可能缺点，训练继续。本地日志与checkpoint是恢复和科学分析依据，不以云端记录恢复模型。SDK日志在RUN_BASE/swanlab，scope目录之外；额外缓存空间须实机检查。云端只显式记录配置和标量，不上传模型/语料。当前本地测试不构成ACP账号与联网验收。

@@ -13,6 +13,7 @@ import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from . import optim
+from .telemetry import Telemetry
 from .artifacts import (read_json,write_json,save_checkpoint,tensor_hash,digest,
                         environment,code_identity,lock,cleanup_atomic_temps)
 from .data import batch,verify
@@ -206,6 +207,8 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
     durable_step = step if resume_checkpoint is not None else None
     last_metrics = {}
 
+    telemetry = None
+
     def publish_progress(kind='running'):
         if rt.rank==0:
             write_json(output/'progress.json',dict(run_id=identity,mode=mode,state=kind,
@@ -213,6 +216,7 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
                        target_steps=target,checkpoint_step=durable_step,D=dimension,
                        last_verified_eval_step=evaluations[-1]['step'] if evaluations else None,
                        metrics=last_metrics))
+            if telemetry is not None: telemetry.log(step,processed,last_metrics,evaluations,kind)
     old_handlers = {}
     for sig in (signal.SIGTERM,signal.SIGINT):
         old_handlers[sig] = signal.getsignal(sig)
@@ -260,6 +264,7 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
     arrays = {s:np.memmap(data/f'{s}.bin',dtype='<u2',mode='r') for s in ('train','val')}
     started = time.monotonic()
     try:
+        telemetry = Telemetry(output,config,identity,mode,step) if rt.rank==0 else None
         publish_progress()
         rt.check([('parameters:'+n,p) for n,p in model.named_parameters()])
         rt.check([('optimizer_state',t) for t in bundle.state_tensors()])
@@ -351,6 +356,7 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
             publish_progress('infrastructure_failure')
         raise
     finally:
+        if telemetry is not None: telemetry.close()
         for array in arrays.values():
             array._mmap.close()
         for sig,handler in old_handlers.items():

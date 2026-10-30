@@ -958,6 +958,14 @@ Linux锁更新为持久.lease文件上的非阻塞内核flock；.lock仅为原�
 
 ---
 
+### 12.15 可选SwanLab在线观察 — 2026-10-30
+
+用户授权接入SwanLab，由运行者配置API Key，更新后smoke再正式运行。NANOGPT_SWANLAB=1启用，训练rank0通过有界队列向独立上传进程发送配置、训练进度、诊断与最新评估标量。每次候选启动创建独立attempt，记录共同training_run_id与resumed_from_step，防止checkpoint回退重算混入旧上传曲线。上传失败或落后允许云端缺点，不能替代本地正式记录；完整响应表仍由本地报告提供。SDK缓存保存在RUN_BASE/swanlab之外于scope交付目录，存储增量待实测。API Key仅通过任务环境配置，不写入仓库。
+
+科研预算、输入与本地恢复机制不变。更新代码后新RUN_BASE重新smoke，必须同时确认网页收到四优化器smoke指标，才启动正式任务；本地CPU测试不能证明云端认证与ACP网络可用。未在本机会话提供Key或启动GPU任务。
+
+---
+
 ## 13. 基线版本与修订规则
 
 ### v1.8 — 2026-10-28
