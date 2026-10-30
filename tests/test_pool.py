@@ -37,7 +37,8 @@ class PoolTests(unittest.TestCase):
             with lock(root/'launcher'), patch('sys.argv',argv):
                 with self.assertRaisesRegex(RuntimeError,'active or stale lock'): main()
                 self.assertTrue(pause.exists())
-            with patch('sys.argv',argv), patch('nanogpt_noise.pool.run_pool',return_value=[]):
+            with patch('sys.argv',argv), patch('nanogpt_noise.pool.run_pool',return_value=[]), \
+                 patch('nanogpt_noise.pool.ScopeReporter'):
                 main()
             self.assertFalse(pause.exists())
             self.assertFalse((root/'launcher/.lock').exists())
@@ -51,7 +52,8 @@ class PoolTests(unittest.TestCase):
             def request(*a,**kw):
                 pause.touch()
                 return []
-            with patch('nanogpt_noise.pool.run_pool',side_effect=request):
+            with patch('nanogpt_noise.pool.run_pool',side_effect=request), \
+                 patch('nanogpt_noise.pool.ScopeReporter'):
                 with self.assertRaises(SystemExit) as caught: serve(args,['0'])
             self.assertEqual(caught.exception.code,75)
 

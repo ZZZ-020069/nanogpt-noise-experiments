@@ -1,3 +1,16 @@
+# v1.8 row scheduling and automatic stage reports — 2026-10-30
+
+Rows follow sigma1-major/sigma2-minor order. Each row waits for all four optimizer searches before advancing; job IDs, eight-candidate search, 2B schedule and input identity remain unchanged. Strict barriers introduce possible GPU idle time, so the old 10–15 day estimate is not newly certified.
+
+- Windows Python 3.13.5 / PyTorch 2.9.1+cpu: full 121-test run passed (114 executed, seven POSIX-only skips) in 209.144 seconds. After final CSV/log presentation changes and a partial expert-interval ordering fix, all 22 targeted row/report/pool/smoke-gate tests passed in 17.360 seconds. The final suite contains 122 tests; Linux CI must certify the pushed commit. Logs: workspace `timing-evidence/row-progress-full.log` and `row-progress-final-focused.log`.
+- Scheduling tests cover all six stable 140-job ranges, exact first row IDs, ascending node order, no next-row dispatch until all four tasks finish, pause and failure barriers, and partial expert intervals.
+- Synthetic report tests verify incomplete candidates never fill final response cells, partial peer ranks stay missing, all four completed searches close a row, cohorts and run IDs are checked, falsely completed short budgets are rejected, and mixed evidence preserves the prior archive with an explicit error.
+- Reporting runs automatically inside the pool: startup, every 300 seconds, row completion and controlled exit. ZIPs contain one generation of JSON, offline HTML and four CSV tables (35-row big table, long cell table, candidate progress and evaluation points); no weights are loaded or archived. Per-row archives are not overwritten. Live console summaries support platforms where runtime file download is unavailable.
+- Report output is outside finalized scope directories, so periodic publication cannot invalidate scope manifests. Live observations explicitly identify their generation/time and are not transactional checkpoints. Candidate progress distinguishes observed steps from durable checkpoint steps and labels the diagnostic step.
+- Python compilation, Bash syntax, authoritative design synchronization and whitespace checks passed. Linux TERM/SIGKILL/lease recovery and 2/4-rank Gloo checks remain in CI; actual ACP/H100 report I/O overhead, row idle cost, save grace period and shared-filesystem behavior still require hardware acceptance. No GPU training or real input preparation was started.
+
+---
+
 # v1.8 platform stop/restart validation — 2026-10-29
 
 The primary ACP workflow is now a batch job: submit the formal startup command, stop through the platform, and start the same command with the same persistent volumes and frozen software/input identity.

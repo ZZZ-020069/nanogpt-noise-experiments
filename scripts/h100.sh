@@ -8,7 +8,7 @@ cd -- "$REPO_ROOT"
 INPUT_ROOT="${INPUT_ROOT:-/data/260010171/inputs-v1.8}"
 DATA_DIR="${DATA_DIR:-$INPUT_ROOT/openwebtext_subset}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-$INPUT_ROOT/frozen-artifacts}"
-RUN_BASE="${RUN_BASE:-/data/260010171/results/nanogpt-v1.8}"
+RUN_BASE="${RUN_BASE:-/data/260010171/results/nanogpt-v1.8-rows}"
 PYTHON="${PYTHON:-python}"
 GIT_BIN="${GIT_BIN:-git}"
 SMOKE_SCOPE="${2:-last1}"
@@ -28,7 +28,7 @@ usage() {
     'SCOPE: full, last1, last2, last3, last6, or last12.' \
     'Defaults:' \
     '  INPUT_ROOT=/data/260010171/inputs-v1.8' \
-    '  RUN_BASE=/data/260010171/results/nanogpt-v1.8' \
+    '  RUN_BASE=/data/260010171/results/nanogpt-v1.8-rows' \
     '' \
     'smoke defaults to last1, tests all four optimizers on one H100; scope requires four GPUs.' \
     'Activate the intended Python/CUDA environment before using this script.'

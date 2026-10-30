@@ -32,7 +32,7 @@
 ```text
 /data/260010171/nanogpt-noise-experiments   代码
 /data/260010171/inputs-v1.8                当前输入
-/data/260010171/results/nanogpt-v1.8       当前结果
+/data/260010171/results/nanogpt-v1.8-rows       当前结果
 ```
 
 可用 INPUT_ROOT、RUN_BASE、PYTHON 覆盖；保持绝对路径，smoke与正式运行一致。INPUT_ROOT下为preparation.json、openwebtext_subset、frozen-artifacts、registration.json和SHA256SUMS。DATA_DIR和ARTIFACT_DIR通常不应单独覆盖，以免与注册根目录不一致。
@@ -73,7 +73,7 @@ exec bash /data/260010171/nanogpt-noise-experiments/scripts/run_acp.sh formal la
 # 已激活兼容环境的等价入口：bash scripts/run_last1.sh
 ```
 
-默认scope也是last1。四个独立worker动态领取jobs140–279，运行35节点×4优化器，各执行5＋3搜索。全部终态后自动finalize并停止，不启动下一个scope。未来其他scope仍可显式指定，但必须先完成对应scope的smoke，当前任务不包括它们。
+默认scope也是last1。四个独立worker按噪声坐标逐行完成jobs140–279，运行35节点×4优化器，各执行5＋3搜索。全部终态后自动finalize并停止，不启动下一个scope。未来其他scope仍可显式指定，但必须先完成对应scope的smoke，当前任务不包括它们。
 
 GPU由平台分配；CUDA_VISIBLE_DEVICES必须列出四个不同的GPU编号/UUID。程序不申请GPU、不登录服务器、不自行启动下一scope。单个候选默认micro4；改micro必须在smoke前确定并保持全局batch一致，运行后不可换布局恢复。
 
@@ -89,7 +89,7 @@ GPU由平台分配；CUDA_VISIBLE_DEVICES必须列出四个不同的GPU编号/UU
 
 ```bash
 bash scripts/h100.sh status last1
-tail -f /data/260010171/results/nanogpt-v1.8/last1/launcher/job_0140.log
+tail -f /data/260010171/results/nanogpt-v1.8-rows/last1/launcher/job_0140.log
 ```
 
 ACP 无交互终端时，以平台“停止任务→再次启动原任务”为主流程；每次使用相同提交、环境、INPUT_ROOT、RUN_BASE和持久存储挂载。启动命令用exec转入仓库入口，监督脚本将TERM/INT转发给训练进程并等待保存；平台直接强杀或宽限期不足则回退到最近周期checkpoint。实际停止宽限期尚未实机核验。不要在每次启动时自动git pull或重新生成输入。平台停止不产生pause.request，因此再次提交formal即可续训。已finalize的目录再次启动只验证manifest。
@@ -113,10 +113,10 @@ pause 停止分配新任务，并让活跃候选完成当前 optimizer step、�
 
 看到FORMAL SCOPE FINALIZED后，完整传输RUN_BASE/last1目录。不要只下载winner或summary而遗漏候选日志。使用WinSCP/SFTP或rsync保留目录层级，连接中断后续传。
 
-本机接收位置必须在D盘，例如 `D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8\last1`，不要经C盘Downloads/Desktop中转。在安装同一commit的接收端校验：
+本机接收位置必须在D盘，例如 `D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8-rows\last1`，不要经C盘Downloads/Desktop中转。在安装同一commit的接收端校验：
 
 ```powershell
-python -m nanogpt_noise.scope verify --runs 'D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8\last1'
+python -m nanogpt_noise.scope verify --runs 'D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8-rows\last1'
 ```
 
 校验成功前保留服务器副本。当前安排是在last1完成后分析，暂不启动下一个scope。若以后需人工清理已交接目录，现有scope cleanup命令要求目录匹配、finalize/self-verify通过和DELETE-scope确认串；没有自动清理。
@@ -124,7 +124,7 @@ python -m nanogpt_noise.scope verify --runs 'D:\港中深RA\VSCode下载\New\gpu
 单scope分析：
 
 ```bash
-python -m nanogpt_noise.analyze --runs /data/260010171/results/nanogpt-v1.8/last1 --output /data/260010171/results/analysis-last1-v1.8 --plots
+python -m nanogpt_noise.analyze --runs /data/260010171/results/nanogpt-v1.8-rows/last1 --output /data/260010171/results/analysis-last1-v1.8 --plots
 ```
 
 ## Slurm 与维护
@@ -138,11 +138,18 @@ python -m nanogpt_noise.analyze --runs /data/260010171/results/nanogpt-v1.8/last
 模型参考nanoGPT，保留[MIT声明](third_party/nanogpt-LICENSE)；无WandB依赖。
 
 
-升级本次断点修复时，如果此前已经运行过旧提交的 smoke，请保留旧结果并先选择新结果目录，再冒烟；之后所有启动、暂停、继续命令均使用这个 RUN_BASE：
+升级本次逐行填表与报告版本时，如果此前已经运行过旧提交的 smoke，请保留旧结果并先选择新结果目录，再冒烟；之后所有启动、暂停、继续命令均使用这个 RUN_BASE：
 
 ```bash
-export RUN_BASE=/data/260010171/results/nanogpt-v1.8-platform
+export RUN_BASE=/data/260010171/results/nanogpt-v1.8-rows
 bash scripts/run_acp.sh smoke last1
 ```
 
 已登记的 INPUT_ROOT 不变，无需重新制备语料；正式开始后固定提交，不能靠切换 RUN_BASE 把旧轨迹恢复成新代码轨迹。
+
+
+自动阶段报告随正式任务一起启动，无需在ACP中途输入命令。噪声行固定按sigma1={0,.03,.1,.3,.9}外层、sigma2={0,.0001,.001,.01,.1,1,10}内层升序执行。先填完一行四优化器，再进入下一行；行内较快GPU会等待，实际工期需结合报告更新。
+
+报告位于 `RUN_BASE/reports/last1/`：默认每5分钟更新 `latest.zip`、`latest.html` 和 `latest.json`，每行结束及可控退出时额外更新。ZIP内有可离线打开的HTML曲线/诊断、35行总表CSV、候选CSV和完整JSON；每个完成行保留一份 `row_00.zip` 至 `row_34.zip`。不含模型权重。需要在中途分析时，使用平台允许的持久存储访问/下载方式取回latest.zip，解压打开report.html；本机仍直接接收到D盘。平台若不提供运行中的文件下载，可以先看平台日志中的 `[report]` 摘要，并在停止后读取最近报告。
+
+未完成格子只展示进度，八候选搜索完成后才填最终loss/LR；四种优化器均完成该行后才展示完整行排名。报告包括生成时间、generation和诊断所属步数；不是同步的跨GPU checkpoint，不将前缀排名当作最终结论。`report_error.json`或 `[report] ERROR` 表示报告更新失败，上次快照保留，训练继续按原协议执行。平台强杀可能来不及生成退出报告，下次同命令启动会重建。latest.zip是同一generation的完整快照，优先下载该文件。

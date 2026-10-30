@@ -4,7 +4,7 @@ set -euo pipefail
 scope="${1:-last1}"
 (( $# <= 1 )) || exit 2
 case "$scope" in full|last1|last2|last3|last6|last12) ;; *) exit 2;; esac
-root="${RUN_BASE:-/data/260010171/results/nanogpt-v1.8}/$scope"
+root="${RUN_BASE:-/data/260010171/results/nanogpt-v1.8-rows}/$scope"
 [[ "$root" == /* ]] || { echo 'RUN_BASE must be absolute' >&2; exit 2; }
 [[ -f "$root/scope_run.json" && ! -f "$root/scope_manifest.json" ]] || {
   echo 'No unfinished scope found at the selected RUN_BASE.' >&2; exit 2;

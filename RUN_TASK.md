@@ -12,7 +12,7 @@ last1 从共同未训练初始化开始，只训练第 12 个 Transformer block�
 cd /data/260010171/nanogpt-noise-experiments
 git -c safe.directory=/data/260010171/nanogpt-noise-experiments pull --ff-only
 export INPUT_ROOT=/data/260010171/inputs-v1.8
-export RUN_BASE=/data/260010171/results/nanogpt-v1.8
+export RUN_BASE=/data/260010171/results/nanogpt-v1.8-rows
 ```
 
 默认路径就是上述值。使用其他服务器时在每次任务中设置相同的 INPUT_ROOT、RUN_BASE；已有 CUDA 环境可指定 `PYTHON=/绝对路径/bin/python`。结果目录应在仓库外，避免日志导致工作区不干净。
@@ -45,13 +45,13 @@ bash scripts/run_acp.sh smoke last1
 
 ```bash
 export INPUT_ROOT=/data/260010171/inputs-v1.8
-export RUN_BASE=/data/260010171/results/nanogpt-v1.8-platform
+export RUN_BASE=/data/260010171/results/nanogpt-v1.8-rows
 exec bash /data/260010171/nanogpt-noise-experiments/scripts/run_acp.sh formal last1
 ```
 
 smoke 也必须使用这里相同的 INPUT_ROOT、RUN_BASE 和提交版本；若之前已在旧目录冒烟，先在新 RUN_BASE 重新冒烟。环境可通过相同的 PYTHON 或 ENV_PREFIX 指定。输入、结果和需复用的环境必须放在平台持久化存储中；每次启动均挂载同一个目录。不要在每次启动命令里自动 git pull、重新制备数据或更换结果目录。
 
-平台配置为一个实例/worker分配四张H100，仓库内部启动四个独立单卡训练进程；不要再由平台复制成四个四卡实例。四卡领取jobs140–279，各job顺序完成八个候选，仅运行last1。完成后自动finalize并停止；已finalize的目录再次启动只校验交付文件，不重新训练。
+平台配置为一个实例/worker分配四张H100，仓库内部启动四个独立单卡训练进程；不要再由平台复制成四个四卡实例。四卡同时处理同一噪声行的四优化器，各job顺序完成八个候选；该行四个搜索全部结束后才进入下一行，仅运行last1。首行job140/175/210/245，全部任务编号保持不变。完成后自动finalize并停止；已finalize的目录再次启动只校验交付文件，不重新训练。
 
 这里使用 exec，使启动shell被仓库入口替换，让平台停止信号能够到达仓库的监督进程。截图中的外部 `/data/260010171/run_v18_ready.sh` 不在仓库，尚未核对；如继续使用它，应让最后一条训练启动命令也通过exec转入上述仓库入口，并保持相同路径和代码版本。
 
@@ -71,10 +71,10 @@ Linux使用操作系统flock独占锁。新版本进程被强杀后，内核锁�
 
 ## 6. 下载并分析后再决定下一步
 
-结果在 `/data/260010171/results/nanogpt-v1.8/last1`。下载整个目录并核验 `scope_manifest.json`；本机接收目录固定放 D 盘，例如：
+结果在 `/data/260010171/results/nanogpt-v1.8-rows/last1`。下载整个目录并核验 `scope_manifest.json`；本机接收目录固定放 D 盘，例如：
 
 ```text
-D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8\last1
+D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8-rows\last1
 ```
 
 不要先下载到 C 盘，也不要在服务器另建一份大型压缩包。校验成功前保留服务器结果；目前没有自动清理或自动开展下一 scope 的安排。
@@ -82,11 +82,18 @@ D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8\last1
 更详细的存储、恢复、Slurm 与结果校验见 [README.md](README.md)。
 
 
-升级本次断点修复时，如果此前已经运行过旧提交的 smoke，请保留旧结果并先选择新结果目录，再冒烟；之后所有启动、暂停、继续命令均使用这个 RUN_BASE：
+升级本次逐行填表与报告版本时，如果此前已经运行过旧提交的 smoke，请保留旧结果并先选择新结果目录，再冒烟；之后所有启动、暂停、继续命令均使用这个 RUN_BASE：
 
 ```bash
-export RUN_BASE=/data/260010171/results/nanogpt-v1.8-platform
+export RUN_BASE=/data/260010171/results/nanogpt-v1.8-rows
 bash scripts/run_acp.sh smoke last1
 ```
 
 已登记的 INPUT_ROOT 不变，无需重新制备语料；正式开始后固定提交，不能靠切换 RUN_BASE 把旧轨迹恢复成新代码轨迹。
+
+
+自动阶段报告随正式任务一起启动，无需在ACP中途输入命令。噪声行固定按sigma1={0,.03,.1,.3,.9}外层、sigma2={0,.0001,.001,.01,.1,1,10}内层升序执行。先填完一行四优化器，再进入下一行；行内较快GPU会等待，实际工期需结合报告更新。
+
+报告位于 `RUN_BASE/reports/last1/`：默认每5分钟更新 `latest.zip`、`latest.html` 和 `latest.json`，每行结束及可控退出时额外更新。ZIP内有可离线打开的HTML曲线/诊断、35行总表CSV、候选CSV和完整JSON；每个完成行保留一份 `row_00.zip` 至 `row_34.zip`。不含模型权重。需要在中途分析时，使用平台允许的持久存储访问/下载方式取回latest.zip，解压打开report.html；本机仍直接接收到D盘。平台若不提供运行中的文件下载，可以先看平台日志中的 `[report]` 摘要，并在停止后读取最近报告。
+
+未完成格子只展示进度，八候选搜索完成后才填最终loss/LR；四种优化器均完成该行后才展示完整行排名。报告包括生成时间、generation和诊断所属步数；不是同步的跨GPU checkpoint，不将前缀排名当作最终结论。`report_error.json`或 `[report] ERROR` 表示报告更新失败，上次快照保留，训练继续按原协议执行。平台强杀可能来不及生成退出报告，下次同命令启动会重建。latest.zip是同一generation的完整快照，优先下载该文件。

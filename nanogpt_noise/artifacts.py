@@ -74,7 +74,7 @@ def save_checkpoint(path,value):
 def cleanup_atomic_temps(directory):
     """Only call under the enclosing writer lock; match our mkstemp names."""
     names={'.lock','latest.pt','final.pt','failure.pt','initial.pt','windows.pt',
-           'metadata.json','status.json','evaluations.json','identity.json','meta.json',
+           'metadata.json','status.json','progress.json','evaluations.json','identity.json','meta.json',
            'search.json','steps.jsonl.gz','steps.compaction.json','preparation.json',
            'registration.json','SHA256SUMS','scope_run.json','scope_manifest.json'}
     for path in Path(directory).glob('*.tmp'):

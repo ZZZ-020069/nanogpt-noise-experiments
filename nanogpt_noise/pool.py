@@ -8,7 +8,30 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from .artifacts import lock
+from .protocol import grid,SCOPES
+from .progress import ScopeReporter
+
+
+def row_batches(start,end):
+    """Keep stable optimizer-major IDs; execute sigma1/sigma2 rows in order."""
+    jobs=grid()
+    groups={}
+    for index in range(start,end+1):
+        job=jobs[index]
+        groups.setdefault((job['scope'],job['node']),[]).append(index)
+    return [groups[key] for key in sorted(groups,key=lambda k:(SCOPES.index(k[0]),k[1]))]
+
+
+def run_rows(start,end,gpus,runner,on_failure=None,stop_requested=None,on_row_complete=None):
+    for batch in row_batches(start,end):
+        if stop_requested is not None and stop_requested(): return []
+        started=time.monotonic()
+        failures=run_pool(batch,gpus,runner,on_failure,stop_requested)
+        if failures or (stop_requested is not None and stop_requested()): return failures
+        if on_row_complete: on_row_complete(batch,time.monotonic()-started)
+    return []
 
 
 def run_pool(jobs, gpus, runner, on_failure=None, stop_requested=None):
@@ -70,9 +93,14 @@ class SubprocessRunner:
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.active = set()
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.stop_requested = stop_requested or (lambda: False)
         self.stopping = threading.Event()
+        self.jobs = {}
+
+    def snapshot(self):
+        with self.lock:
+            return dict(jobs={str(i):dict(v) for i,v in self.jobs.items()})
 
     def __call__(self, gpu, job):
         path = self.log_dir / f'job_{job:04d}.log'
@@ -92,11 +120,15 @@ class SubprocessRunner:
                 process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
                                            env=env)
                 self.active.add(process)
+                started=time.monotonic()
+                self.jobs[job]=dict(state='running',gpu=gpu,pid=process.pid)
             try:
                 code = process.wait()
             finally:
                 with self.lock:
                     self.active.discard(process)
+                    self.jobs[job].update(state='exited',exit_code=process.returncode,
+                                          elapsed_seconds=time.monotonic()-started)
         print(f'[pool] GPU {gpu}: job {job} exited {code}', flush=True)
         return code
 
@@ -123,6 +155,8 @@ def main():
     args = parser.parse_args()
     if not (0 <= args.start <= args.end <= 839):
         parser.error('job interval must satisfy 0 <= start <= end <= 839')
+    if grid()[args.start]['scope']!=grid()[args.end]['scope']:
+        parser.error('one pool must stay inside one scope')
     gpus = [item.strip() for item in args.gpus.split(',') if item.strip()]
     if len(gpus) != 4 or len(set(gpus)) != 4:
         parser.error('--gpus must contain exactly four unique tokens')
@@ -144,6 +178,10 @@ def serve(args, gpus):
     def stopping():
         return interrupted.is_set() or pause_file.exists()
     runner = SubprocessRunner(args, Path(args.output)/'launcher',stop_requested=stopping)
+    execution=dict(policy='sigma1-major-row-barrier-v1',row_timings=[])
+    def runtime_snapshot():
+        return {**execution,**runner.snapshot()}
+    reporter=ScopeReporter(args.output,grid()[args.start]['scope'],runtime_snapshot)
 
     def stop(signum, _frame):
         interrupted.set()
@@ -156,8 +194,16 @@ def serve(args, gpus):
         if not pause_file.exists():
             runner.terminate_all()
     try:
-        failures = run_pool(range(args.start, args.end + 1), gpus, runner,
-                            on_failure=stop_on_failure,stop_requested=stopping)
+        reporter.start()
+        def row_complete(batch,elapsed):
+            states=runner.snapshot()['jobs']
+            busy=sum(states.get(str(i),{}).get('elapsed_seconds',0) for i in batch)
+            execution['row_timings']=execution['row_timings']+[
+                dict(node=grid()[batch[0]]['node'],wall_seconds=elapsed,
+                     idle_gpu_seconds=max(0,len(gpus)*elapsed-busy))]
+            reporter.publish('row_complete')
+        failures = run_rows(args.start,args.end,gpus,runner,
+                            on_failure=stop_on_failure,stop_requested=stopping,on_row_complete=row_complete)
         if pause_file.exists():
             print('SCOPE PAUSED: all worker processes exited; checkpoints retained',flush=True)
             raise SystemExit(75)
@@ -170,6 +216,7 @@ def serve(args, gpus):
                   'rerun the same interval to resume', file=sys.stderr, flush=True)
             raise SystemExit(code)
     finally:
+        reporter.close('interrupted' if stopping() else 'pool_exit')
         for number, handler in previous.items():
             signal.signal(number, handler)
 

@@ -1,6 +1,7 @@
 """One independent candidate, with transactional checkpoints and DDP."""
 import argparse
 import contextlib
+from datetime import datetime,timezone
 from dataclasses import asdict
 import math
 import os
@@ -202,6 +203,16 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
               f"peak_lr={config['peak_lr']:.8g} world={rt.world} micro={micro} "
               f"accumulation={accumulation} step={step}/{target} output={output}", flush=True)
     interrupted = [False]
+    durable_step = step if resume_checkpoint is not None else None
+    last_metrics = {}
+
+    def publish_progress(kind='running'):
+        if rt.rank==0:
+            write_json(output/'progress.json',dict(run_id=identity,mode=mode,state=kind,
+                       updated_at=datetime.now(timezone.utc).isoformat(),step=step,tokens=processed,
+                       target_steps=target,checkpoint_step=durable_step,D=dimension,
+                       last_verified_eval_step=evaluations[-1]['step'] if evaluations else None,
+                       metrics=last_metrics))
     old_handlers = {}
     for sig in (signal.SIGTERM,signal.SIGINT):
         old_handlers[sig] = signal.getsignal(sig)
@@ -219,11 +230,12 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
                      target_steps=target,run_id=identity,**extra)
         if rt.rank==0:
             write_json(output/'status.json',value)
+            publish_progress(kind)
         rt.barrier()
         return value
 
     def checkpoint_evaluation():
-        nonlocal best
+        nonlocal best,durable_step
         values = evaluate(model,arrays,indices,budget,micro,rt)
         if tensor_hash(frozen)!=frozen_hash:
             raise RuntimeError('frozen parameter checksum changed')
@@ -241,11 +253,14 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
                 print(f"eval step={step}/{target} train={values['train']:.6f} "
                       f"val={values['val']:.6f}", flush=True)
             save_checkpoint(latest,snapshot())
+            durable_step=step
+            publish_progress()
         rt.barrier()
 
     arrays = {s:np.memmap(data/f'{s}.bin',dtype='<u2',mode='r') for s in ('train','val')}
     started = time.monotonic()
     try:
+        publish_progress()
         rt.check([('parameters:'+n,p) for n,p in model.named_parameters()])
         rt.check([('optimizer_state',t) for t in bundle.state_tensors()])
         if not evaluations:
@@ -254,6 +269,7 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
             if rt.any(interrupted[0] or (pause_file is not None and Path(pause_file).exists())):
                 if rt.rank==0:
                     save_checkpoint(latest,snapshot())
+                    durable_step=step
                 return status('infrastructure_failure',reason='paused; resume same candidate')
             bundle.zero_grad()
             lr = config['peak_lr']*budget.multiplier(step*budget.step_tokens)
@@ -297,6 +313,9 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
                            finite=True,elapsed_seconds=time.monotonic()-started)
             if rt.rank==0:
                 write_json(output/'steps'/f'{step:06d}.json',metrics)
+                if diagnostic:
+                    last_metrics=dict(metrics)
+                    publish_progress()
                 if diagnostic and mode!='test':
                     print(f"step={step}/{target} tokens={processed} "
                           f"loss={float(train_loss):.6f} lr={lr:.8g} "
@@ -308,6 +327,7 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
             if stop and step<target:
                 if rt.rank==0:
                     save_checkpoint(latest,snapshot())
+                    durable_step=step
                 return status('infrastructure_failure',reason='interrupted; resume same candidate')
         if rt.rank==0:
             # The final evaluation has already written the complete latest
@@ -328,6 +348,7 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
         if rt.rank==0:
             write_json(output/'status.json',dict(status='infrastructure_failure',mode=mode,
                        step=step,tokens=processed,run_id=identity,reason=repr(exc)))
+            publish_progress('infrastructure_failure')
         raise
     finally:
         for array in arrays.values():
