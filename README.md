@@ -27,20 +27,21 @@
 
 需要 Linux、Python≥3.11、CUDA版PyTorch≥2.6,<3、NumPy、matplotlib及支持BF16的GPU。`run_acp.sh` 会检查指定 PYTHON；未指定且默认环境不兼容时，通过Conda创建独立Python3.11环境，安装PyTorch2.8.0/cu128等依赖，不修改base。首次安装需要网络和额外磁盘；`ENV_PREFIX`可指定环境目录。失败就停止，不跳过检查。
 
-默认目录：
+下面的ACP命令显式使用以下目录（已登记输入可复用，本轮结果目录首次使用应为空）：
 
 ```text
 /data/260010171/nanogpt-noise-experiments   代码
 /data/260010171/inputs-v1.8                当前输入
-/data/260010171/results/nanogpt-v1.8-rows       当前结果
+/data/260010171/results/nanogpt-v1.8-swanlab       当前结果
 ```
 
 可用 INPUT_ROOT、RUN_BASE、PYTHON 覆盖；保持绝对路径，smoke与正式运行一致。INPUT_ROOT下为preparation.json、openwebtext_subset、frozen-artifacts、registration.json和SHA256SUMS。DATA_DIR和ARTIFACT_DIR通常不应单独覆盖，以免与注册根目录不一致。
 
-所有服务器统一在新的空 INPUT_ROOT 中执行一次：
+已有成功登记的v1.8输入时直接复用，不需再次制备。只有尚未制备输入时，在新的空 INPUT_ROOT 中执行一次：
 
 ```bash
-bash scripts/run_acp.sh inputs
+export INPUT_ROOT=/data/260010171/inputs-v1.8
+exec bash /data/260010171/nanogpt-noise-experiments/scripts/run_acp.sh inputs
 ```
 
 固定 OpenWebText revision、GPT-2 tokenizer 及既定划分，直接在服务器流式生成 1B 训练语料和 10M 验证语料，再重新制备共同未训练初始化、训练与评估窗口并登记。无需 SCP 上传数据，也不接受旧输入迁移。1B 是语料容量，训练时重复采样至 2B。首次制备可能耗时数小时，需要服务器访问数据源。
@@ -51,26 +52,37 @@ bash scripts/run_acp.sh inputs
 
 ## 冒烟和正式启动
 
+**在ACP任务环境变量／密钥配置中设置SWANLAB_API_KEY，冒烟、正式任务和重启任务都要带上该密钥。下面的冒烟和正式训练代码块均为完整的ACP启动命令，整段粘贴后提交；export行与训练命令必须在同一任务执行。可选SWANLAB_WORKSPACE指定团队。**
+
 提交前确保干净仓库；输入、结果和控制台日志放在仓库外。入口仅为当前进程配置仓库的Git safe.directory。没有任务运行时更新一次，smoke开始后固定commit：
 
 ```bash
+cd /data/260010171/nanogpt-noise-experiments
 git -c safe.directory=/data/260010171/nanogpt-noise-experiments pull --ff-only
 ```
 
 一张H100，last1四优化器各8步（共32步）：
 
 ```bash
-bash scripts/run_acp.sh smoke last1
-# 已激活兼容环境的等价入口：bash scripts/run_last1_smoke.sh
+export NANOGPT_SWANLAB=1
+export SWANLAB_PROJ_NAME=nanogpt-noise
+export INPUT_ROOT=/data/260010171/inputs-v1.8
+export RUN_BASE=/data/260010171/results/nanogpt-v1.8-swanlab
+
+exec bash /data/260010171/nanogpt-noise-experiments/scripts/run_acp.sh smoke last1
 ```
 
 smoke包括节点(.03,.01)、中心LR、初末固定窗口评估、冻结校验和及checkpoint。四项全部成功才写入代码和输入验收标记；正式入口还核对scope、micro、协议、软件版本与候选metadata。smoke保存为独立的短前缀结果，不参加正式排名。8步不检验收敛，也不足以保证多日吞吐。
 
-四张H100，在ACP提交训练或停止后再次启动（同一命令）：
+确认SMOKE PASSED且SwanLab网页出现四优化器smoke指标后，再分配四张H100提交以下正式任务。平台停止后，原样重新提交这整段命令和同一密钥配置：
 
 ```bash
+export NANOGPT_SWANLAB=1
+export SWANLAB_PROJ_NAME=nanogpt-noise
+export INPUT_ROOT=/data/260010171/inputs-v1.8
+export RUN_BASE=/data/260010171/results/nanogpt-v1.8-swanlab
+
 exec bash /data/260010171/nanogpt-noise-experiments/scripts/run_acp.sh formal last1
-# 已激活兼容环境的等价入口：bash scripts/run_last1.sh
 ```
 
 默认scope也是last1。四个独立worker从按噪声坐标行优先排列的动态队列领取jobs140–279，运行35节点×4优化器，各执行5＋3搜索。全部终态后自动finalize并停止，不启动下一个scope。未来其他scope仍可显式指定，但必须先完成对应scope的smoke，当前任务不包括它们。
@@ -85,11 +97,12 @@ GPU由平台分配；CUDA_VISIBLE_DEVICES必须列出四个不同的GPU编号/UU
 
 中断后使用相同commit、环境、输入、scope、micro与RUN_BASE恢复。主动执行 pause 后用 resume 解除暂停标记并续训；直接执行 formal 会拒绝启动。意外中断且无暂停请求时，确认原进程已退出并处理遗留锁后，可重跑 formal。两者共用同一套续训逻辑。完成候选复用终态，未完成候选恢复latest.pt。NaN/Inf保留明确失败标签并继续搜索；OOM/存储/硬件错误属于基础设施故障，恢复同一候选，不能换LR规避。如果smoke后改变代码、环境或micro，使用新的RUN_BASE重新冒烟；不要覆盖旧输出。旧2.6B、旧pilot及旧smoke不能迁入新结果目录，也不能修改metadata绕过身份检查。
 
-进度查看（默认目录）：
+可选进度查看（仅供有终端的环境，使用与训练相同的RUN_BASE）：
 
 ```bash
+export RUN_BASE=/data/260010171/results/nanogpt-v1.8-swanlab
 bash scripts/h100.sh status last1
-tail -f /data/260010171/results/nanogpt-v1.8-rows/last1/launcher/job_0140.log
+tail -f /data/260010171/results/nanogpt-v1.8-swanlab/last1/launcher/job_0140.log
 ```
 
 ACP 无交互终端时，以平台“停止任务→再次启动原任务”为主流程；每次使用相同提交、环境、INPUT_ROOT、RUN_BASE和持久存储挂载。启动命令用exec转入仓库入口，监督脚本将TERM/INT转发给训练进程并等待保存；平台直接强杀或宽限期不足则回退到最近周期checkpoint。实际停止宽限期尚未实机核验。不要在每次启动时自动git pull或重新生成输入。平台停止不产生pause.request，因此再次提交formal即可续训。已finalize的目录再次启动只验证manifest。
@@ -97,6 +110,7 @@ ACP 无交互终端时，以平台“停止任务→再次启动原任务”为�
 可选的显式文件暂停（仅适用于能执行额外命令、访问同一 RUN_BASE 的环境）：
 
 ```bash
+export RUN_BASE=/data/260010171/results/nanogpt-v1.8-swanlab
 bash scripts/run_acp.sh pause last1
 # 等待 SCOPE QUIESCENT 后再将 GPU 交给其他人。
 # 算力恢复后，在相同代码/环境/输入/输出下：
@@ -113,10 +127,10 @@ pause 停止分配新任务，并让活跃候选完成当前 optimizer step、�
 
 看到FORMAL SCOPE FINALIZED后，完整传输RUN_BASE/last1目录。不要只下载winner或summary而遗漏候选日志。使用WinSCP/SFTP或rsync保留目录层级，连接中断后续传。
 
-本机接收位置必须在D盘，例如 `D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8-rows\last1`，不要经C盘Downloads/Desktop中转。在安装同一commit的接收端校验：
+本机接收位置必须在D盘，例如 `D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8-swanlab\last1`，不要经C盘Downloads/Desktop中转。在安装同一commit的接收端校验：
 
 ```powershell
-python -m nanogpt_noise.scope verify --runs 'D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8-rows\last1'
+python -m nanogpt_noise.scope verify --runs 'D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8-swanlab\last1'
 ```
 
 校验成功前保留服务器副本。当前安排是在last1完成后分析，暂不启动下一个scope。若以后需人工清理已交接目录，现有scope cleanup命令要求目录匹配、finalize/self-verify通过和DELETE-scope确认串；没有自动清理。
@@ -124,7 +138,7 @@ python -m nanogpt_noise.scope verify --runs 'D:\港中深RA\VSCode下载\New\gpu
 单scope分析：
 
 ```bash
-python -m nanogpt_noise.analyze --runs /data/260010171/results/nanogpt-v1.8-rows/last1 --output /data/260010171/results/analysis-last1-v1.8 --plots
+python -m nanogpt_noise.analyze --runs /data/260010171/results/nanogpt-v1.8-swanlab/last1 --output /data/260010171/results/analysis-last1-v1.8 --plots
 ```
 
 ## Slurm 与维护
@@ -138,15 +152,7 @@ python -m nanogpt_noise.analyze --runs /data/260010171/results/nanogpt-v1.8-rows
 模型参考nanoGPT，保留[MIT声明](third_party/nanogpt-LICENSE)；无WandB依赖。
 
 
-升级本次逐行填表与报告版本时，如果此前已经运行过旧提交的 smoke，请保留旧结果并先选择新结果目录，再冒烟；之后所有启动、暂停、继续命令均使用这个 RUN_BASE：
-
-```bash
-export RUN_BASE=/data/260010171/results/nanogpt-v1.8-rows
-bash scripts/run_acp.sh smoke last1
-```
-
-若上述RUN_BASE已被旧提交使用，另选空目录（例如nanogpt-v1.8-rows-dynamic），smoke和正式提交均设置为该目录。已登记的 INPUT_ROOT 不变，无需重新制备语料；正式开始后固定提交，不能靠切换 RUN_BASE 把旧轨迹恢复成新代码轨迹。
-
+升级旧代码后，保留旧结果并选择空RUN_BASE，在本节上方的冒烟和正式完整命令中同时修改；正式启动后固定目录和代码，不在重启时换目录或git pull。已登记INPUT_ROOT复用。
 
 自动阶段报告随正式任务一起启动，无需在ACP中途输入命令。噪声行固定按sigma1={0,.03,.1,.3,.9}外层、sigma2={0,.0001,.001,.01,.1,1,10}内层升序执行。队列依次排列每行的AdamW、Adam、SGD、Muon搜索；每个搜索含八个LR候选。哪张GPU完成搜索就领取下一个任务，不等待同行其他优化器，也不固定GPU与优化器的对应关系。不同节点可以同时运行，完成顺序可以不同于排队顺序；整行齐全后再报告完整行排名。报告在后台生成，不阻塞GPU领任务，实际工期需结合实测更新。
 
