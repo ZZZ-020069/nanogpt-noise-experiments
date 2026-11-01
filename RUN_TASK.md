@@ -1,100 +1,154 @@
-# ACP操作说明：先冒烟，再运行last1
+# ACP唯一操作指南：保存旧结果 → 冒烟 → 正式运行
 
-> **2026-11-01重新开始请优先阅读：[旧32小时文件清单与本次最新版本从零启动](ACP_FRESH_START_20261101.md)。该文档使用独立新代码目录、新结果目录和固定交付标签，包含完整ACP命令。**
+**学长和用户只需按本文件第1至6节顺序操作，不需要再对照其他启动说明。所有代码块整段粘贴到ACP的启动命令中提交；需要的GPU数量在各节标明。**
 
-当前只运行last1：35噪声节点×4优化器×8个学习率候选，每候选2B tokens。last1从共同未训练初始化开始，仅训练最后一个Transformer block。完成后先分析，不自动启动其他scope；四H100约10–15天仍是未实测的条件估算。
+本说明适用于已经运行32小时的旧版044d3ab任务。先取回轻量记录，保留旧目录，再从本次交付的代码开始新的last1任务。新任务复用已登记输入，从共同未训练初始化开始；旧checkpoint不放入新RUN_BASE，不修改旧metadata。
 
-## 1. 更新代码一次，并配置API Key
+本次交付标签为 **acp-start-20261101-v2**，它指向包含本说明的本次最新提交；完整commit SHA以本次交付回复和准备任务日志为准。以下代码通过该标签选择此次统一说明后的提交。此前acp-start-20261101标签与分散启动示例属于上一交付，请以本文件为准。smoke和formal必须打印相同的ACP code commit。
 
-确认旧任务已停止后，由能更新代码的人执行以下命令一次。冒烟后固定代码，续训时不再git pull：
+## 1. 无需GPU：打包并发回旧32小时记录
+
+旧结果根目录：`/data/260010171/results/nanogpt-v1.8-platform/last1`。
+
+| 位置 | 发回的文件 | 用途 |
+|---|---|---|
+| 旧结果根目录 | scope_run.json | scope与任务范围 |
+| launcher/ | 所有.log | 每个job的实际训练、评估和退出情况 |
+| job_0140至job_0155/ | 各自search.json | LR候选、winner与数值失败 |
+| 每个job的candidate_*/ | metadata.json、status.json、evaluations.json | 代码/输入身份、训练终点、loss曲线 |
+| 每个candidate_*/ | steps.jsonl.gz与steps.compaction.json；未压缩时的steps/*.json | 梯度、噪声、LR与吞吐诊断 |
+| /data/260010171/inputs-v1.8/ | registration.json、SHA256SUMS、frozen-artifacts/identity.json | 核对共同输入身份 |
+
+以上只收已有文件；未开始的candidate或中断时尚未产生的文件无需补造。旧版本没有progress.json。已提供的ACP控制台.gz也请保留。此次传输不含模型.pt、语料.bin或环境；旧checkpoint在服务器保留，确认分析与存储安排后再决定清理。
+
+先确保旧ACP任务已经停止。可以单独提交以下CPU打包任务，无需交互终端，也不启动训练：
 
 ```bash
-cd /data/260010171/nanogpt-noise-experiments
-git -c safe.directory=/data/260010171/nanogpt-noise-experiments pull --ff-only
+set -euo pipefail
+/data/260010171/envs/nanogpt-py311/bin/python - <<'PY'
+from pathlib import Path
+import hashlib,json,tarfile
+root=Path('/data/260010171/results/nanogpt-v1.8-platform/last1')
+inputs=Path('/data/260010171/inputs-v1.8')
+assert root.is_dir(), 'Old result directory is missing'
+selected=[]
+def add(path,arc):
+    if path.is_file() and not path.is_symlink(): selected.append((path,arc))
+add(root/'scope_run.json','last1/scope_run.json')
+for path in sorted((root/'launcher').glob('*.log')):
+    add(path,'last1/launcher/'+path.name)
+for number in range(140,156):
+    job=root/f'job_{number:04d}'
+    add(job/'search.json','last1/'+job.name+'/search.json')
+    for candidate in sorted(job.glob('candidate_[0-9][0-9]')):
+        for filename in ('metadata.json','status.json','evaluations.json',
+                         'steps.jsonl.gz','steps.compaction.json'):
+            path=candidate/filename
+            add(path,'last1/'+path.relative_to(root).as_posix())
+        for path in sorted((candidate/'steps').glob('*.json')):
+            add(path,'last1/'+path.relative_to(root).as_posix())
+for rel in ('registration.json','SHA256SUMS','frozen-artifacts/identity.json'):
+    add(inputs/rel,'inputs-v1.8/'+rel)
+assert selected, 'No files selected'
+output=Path('/data/260010171/results/old32h-analysis-20261101.tar.gz')
+assert not output.exists(), 'Bundle already exists; preserve it or choose another output filename'
+manifest=[]
+with tarfile.open(output,'w:gz') as bundle:
+    for path,arc in selected:
+        content=path.read_bytes()
+        manifest.append(dict(path=arc,bytes=len(content),sha256=hashlib.sha256(content).hexdigest()))
+        bundle.add(path,arcname=arc,recursive=False)
+manifest_path=output.with_suffix(output.suffix+'.manifest.json')
+manifest_path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+print('SEND:',output)
+print('SEND:',manifest_path)
+print('files:',len(selected),'bundle bytes:',output.stat().st_size)
+PY
 ```
 
-在ACP的任务环境变量／密钥配置中添加：
+请将生成的tar.gz和manifest.json通过平台允许的下载方式发回。用户本机直接接收到：
 
-| 名称 | 值 |
-|---|---|
-| SWANLAB_API_KEY | 你自己的完整API Key，以密钥方式保存 |
-
-冒烟任务、正式任务及之后的重启任务都必须带上这项密钥配置。可选SWANLAB_WORKSPACE指定有权限的团队；不填则使用账号默认空间。Key不写入仓库或下面的启动命令。
-
-## 2. 确认输入和结果目录
-
-- INPUT_ROOT复用已经通过v1.8 inputs入口成功制备并登记的目录：/data/260010171/inputs-v1.8，不需重新生成。
-- 本轮RUN_BASE选择/data/260010171/results/nanogpt-v1.8-swanlab；如果它已被旧提交使用，另选空目录，并把下方冒烟和正式命令中的RUN_BASE同时改成该目录。
-- 第一次冒烟确定目录后，正式训练及所有中断续跑都固定相同目录、代码、环境、micro和持久存储挂载。已有兼容环境可通过ACP环境变量设置PYTHON=/绝对路径/bin/python；每次任务保持一致。
-
-只有尚未成功制备v1.8输入时，才单独提交下面的数据准备命令：
-
-```bash
-export INPUT_ROOT=/data/260010171/inputs-v1.8
-exec bash /data/260010171/nanogpt-noise-experiments/scripts/run_acp.sh inputs
+```text
+D:\港中深RA\VSCode下载\New\gpu-results\old32h-20261101\
 ```
 
-首次制备需网络和数小时，输入文件约2.53GB，环境缓存另计。目标目录必须为空或由本版本制备标记管理；已登记目录重复执行inputs只校验，不重新抽样或初始化。
+这是一份轻量分析包，不是完整训练备份；实际大小以打包日志为准。
 
-## 3. 一张H100：提交冒烟任务
+## 2. 无需GPU：准备本次新代码，只做一次
 
-在ACP中创建一个分配一张H100的任务，带上第1节的密钥配置。将下面整段粘贴到“启动命令”，作为一个任务一起提交；export四行与最后的bash命令一起执行，不需要运行中另开终端：
+不覆盖旧目录nanogpt-noise-experiments-20261030。以下新目录须尚不存在；若已经使用，保留原目录并统一选择另一个新代码路径。
+
+在ACP提交下列准备命令，无需申请训练GPU。该任务结束后再提交冒烟：
 
 ```bash
+set -euo pipefail
+git clone --branch acp-start-20261101-v2 --depth 1   https://github.com/ZZZ-020069/nanogpt-noise-experiments.git   /data/260010171/nanogpt-noise-experiments-20261101-v2
+
+git -c safe.directory=/data/260010171/nanogpt-noise-experiments-20261101-v2   -C /data/260010171/nanogpt-noise-experiments-20261101-v2 rev-parse HEAD
+```
+
+标签克隆后处于detached HEAD是正常情况。记下打印的完整commit，应该与本次交付回复一致。后续启动只使用下方带20261101的新代码路径，不调用旧run_v18_ready.sh或旧日期副本。
+
+## 3. 在ACP配置密钥与持久目录
+
+在ACP任务的环境变量／密钥配置中，设置SWANLAB_API_KEY为用户提供的完整Key。smoke、formal及重启任务都带上这一配置，Key不写入命令或Git。使用个人空间时不设置SWANLAB_WORKSPACE；使用团队则另设有权限的团队username。
+
+以下命令复用日志中确认过的Python环境与已登记输入。环境必须持久保存，SwanLab依赖由run_acp.sh安装。输入无需重做；若平台路径不同，运行者在smoke前统一调整，之后固定。
+
+本次新RUN_BASE为/data/260010171/results/nanogpt-v1.8-20261101-v2。**首次smoke前该目录应为空或不存在**；若已用于旧提交，另选新空目录，并同步修改所有后续代码块。smoke创建目录后，formal和重启继续使用同一目录。
+
+## 4. 一张H100：提交冒烟，确认网页收到指标
+
+```bash
+set -euo pipefail
 export NANOGPT_SWANLAB=1
 export SWANLAB_PROJ_NAME=nanogpt-noise
 export INPUT_ROOT=/data/260010171/inputs-v1.8
-export RUN_BASE=/data/260010171/results/nanogpt-v1.8-swanlab
+export RUN_BASE=/data/260010171/results/nanogpt-v1.8-20261101-v2
+export PYTHON=/data/260010171/envs/nanogpt-py311/bin/python
 
-exec bash /data/260010171/nanogpt-noise-experiments/scripts/run_acp.sh smoke last1
+CODE_ROOT=/data/260010171/nanogpt-noise-experiments-20261101-v2
+EXPECTED_COMMIT="$(git -c safe.directory="$CODE_ROOT" -C "$CODE_ROOT" rev-parse 'refs/tags/acp-start-20261101-v2^{commit}')"
+ACTUAL_COMMIT="$(git -c safe.directory="$CODE_ROOT" -C "$CODE_ROOT" rev-parse HEAD)"
+[[ "$ACTUAL_COMMIT" == "$EXPECTED_COMMIT" ]]
+printf 'Pinned release: %s\n' "$ACTUAL_COMMIT"
+exec bash "$CODE_ROOT/scripts/run_acp.sh" smoke last1
 ```
 
-四行export依次设置：开启SwanLab、网页项目名称、已登记输入目录、本轮结果目录。每次提交任务是独立环境，所以正式任务和重启任务也必须重复写这些设置。
+四行export配置上传开关、网页项目、输入与输出；PYTHON固定环境。每次ACP提交都是独立环境，不能只在上一个任务设置一次。
 
-入口在启用上传时安装SwanLab。冒烟依次运行四优化器，各8步，并检查固定窗口评估、冻结参数和checkpoint。必须同时确认两项后再正式运行：
+冒烟成功需要同时满足：
 
-1. ACP日志出现SMOKE PASSED。
-2. SwanLab网页的nanogpt-noise项目出现四个优化器的smoke记录，能看到evaluation/val、progress/step指标。
+- ACP code commit与第2节及本次交付回复一致，不能仍是044d3ab。
+- 日志显示SMOKE PASSED。
+- 用户登录自己的SwanLab个人空间，看到nanogpt-noise项目及四优化器smoke记录，指标包括evaluation/val、progress/step。
 
-仅SMOKE PASSED不能证明云端认证和联网成功。网页无数据时先检查密钥配置、网络和日志中的[swanlab]提示；暂不提交正式任务。
+网页无需预建项目或组织；代码联网认证成功后创建项目。只有SMOKE PASSED但网页无数据时，先排查[swanlab]日志、密钥和联网，不直接提交正式任务。
 
-## 4. 四张H100：提交正式任务
+## 5. 四张H100：提交正式last1训练
 
-创建一个实例分配四张H100，带上同一API Key配置，将下面整段粘贴到ACP“启动命令”：
+创建一个实例分配四卡，带相同API Key配置。不要由平台复制四个实例。
 
 ```bash
+set -euo pipefail
 export NANOGPT_SWANLAB=1
 export SWANLAB_PROJ_NAME=nanogpt-noise
 export INPUT_ROOT=/data/260010171/inputs-v1.8
-export RUN_BASE=/data/260010171/results/nanogpt-v1.8-swanlab
+export RUN_BASE=/data/260010171/results/nanogpt-v1.8-20261101-v2
+export PYTHON=/data/260010171/envs/nanogpt-py311/bin/python
 
-exec bash /data/260010171/nanogpt-noise-experiments/scripts/run_acp.sh formal last1
+CODE_ROOT=/data/260010171/nanogpt-noise-experiments-20261101-v2
+EXPECTED_COMMIT="$(git -c safe.directory="$CODE_ROOT" -C "$CODE_ROOT" rev-parse 'refs/tags/acp-start-20261101-v2^{commit}')"
+ACTUAL_COMMIT="$(git -c safe.directory="$CODE_ROOT" -C "$CODE_ROOT" rev-parse HEAD)"
+[[ "$ACTUAL_COMMIT" == "$EXPECTED_COMMIT" ]]
+printf 'Pinned release: %s\n' "$ACTUAL_COMMIT"
+exec bash "$CODE_ROOT/scripts/run_acp.sh" formal last1
 ```
 
-与冒烟使用同一INPUT_ROOT和RUN_BASE。仓库内部启动四个独立单卡worker；不需要平台复制四个实例。任务按固定sigma1、遍历七个sigma2的顺序入队，每节点依次排列四优化器搜索。每个搜索内部顺序完成八候选，空闲GPU立即领取下一搜索，不等待整行。last1全部结束后自动finalize并停止。
+启动时检查：新代码路径、新RUN_BASE、同一release commit。首批任务应为140/175/210/245（四优化器的节点0；控制台打印先后可不同），之后空闲GPU继续领取下一任务。不能仍按140/141/142/143作为首批。pool应自动输出[report]阶段摘要，SwanLab陆续出现formal记录；完成last1后停止，不自动运行其他scope。
 
-## 5. 中途停止与断点续跑
+## 6. 平台停止后：原样重新提交第5节命令续跑
 
-需要交出算力时，使用ACP“停止任务”。再次获得四张H100后，原样重新提交第4节完整命令及密钥配置即可；不更换RUN_BASE，不重新制备输入，不再更新代码或依赖，也不重跑smoke。
+ACP平台停止任务，等待原进程退出。重新获得四卡后，原样提交第5节整段命令和相同密钥配置。不再clone、git pull、重新制备数据、换目录或重做smoke。checkpoint仍在本轮RUN_BASE下恢复，平台强杀可能回退到最近周期checkpoint。实际保存宽限期需平台验收；不要手工删除.lease文件。
 
-平台先发TERM/INT且保存宽限期足够时，程序完成当前step、保存并退出；强杀或断电时回退到最近周期checkpoint，通常最多重算活跃候选约191步/100M tokens。实际平台保存宽限期仍需验收。已完成候选复用，未完成候选续训；已finalize目录再次启动只校验文件。持久存储必须跨任务保留并挂载相同目录。
-
-Linux内核flock在进程结束后释放，重启取得独占权后接管本版本遗留.lock；不要删除.lease文件。旧格式锁或不支持flock的存储需要核查。有额外命令入口时才使用可选pause/resume，详见README。
-
-## 6. 查看阶段报告和下载结果
-
-自动阶段报告随正式任务一起启动，无需在ACP中途输入命令。噪声行固定按sigma1={0,.03,.1,.3,.9}外层、sigma2={0,.0001,.001,.01,.1,1,10}内层升序执行。不同节点可以同时运行，完成顺序可以不同于排队顺序；整行齐全后才报告完整行排名，但不阻塞GPU领取下一任务。报告由后台线程生成，实际工期需结合实测更新。
-
-报告位于 `RUN_BASE/reports/last1/`：默认每5分钟更新 `latest.zip`、`latest.html` 和 `latest.json`，每行结束及可控退出时额外更新。ZIP内有可离线打开的HTML曲线/诊断、35行总表CSV、候选CSV和完整JSON；每个完成行保留一份 `row_00.zip` 至 `row_34.zip`。不含模型权重。需要在中途分析时，使用平台允许的持久存储访问/下载方式取回latest.zip，解压打开report.html；本机仍直接接收到D盘。平台若不提供运行中的文件下载，可以先看平台日志中的 `[report]` 摘要，并在停止后读取最近报告。
-
-未完成格子只展示进度，八候选搜索完成后才填最终loss/LR；四种优化器均完成该行后才展示完整行排名。报告包括生成时间、generation和诊断所属步数；不是同步的跨GPU checkpoint，不将前缀排名当作最终结论。`report_error.json`或 `[report] ERROR` 表示报告更新失败，上次快照保留，训练继续按原协议执行。平台强杀可能来不及生成退出报告，下次同命令启动会重建。latest.zip是同一generation的完整快照，优先下载该文件。
-
-
-
-最终结果在/data/260010171/results/nanogpt-v1.8-swanlab/last1。看到FORMAL SCOPE FINALIZED后下载整个目录，按scope_manifest.json校验；本机直接接收至D盘，例如D:\港中深RA\VSCode下载\New\gpu-results\nanogpt-v1.8-swanlab\last1，不经过C盘。不要在服务器另建一份大型压缩包，校验成功前保留服务器副本。存储和校验命令详见[README](README.md)。
-
-## SwanLab记录含义
-
-每候选每次启动一个独立上传记录，名称包括mode/scope/optimizer/node/candidate/attempt；config记录training_run_id和resumed_from_step。恢复后以training_run_id对应同一科学轨迹，用attempt区分回退重算，不能把上传记录数量当候选数量。横轴默认上传序号，分析时改用progress/tokens；evaluation指标附带其自身step/tokens，diagnostic/step标明诊断时刻。smoke与formal通过mode区分。上传指标为观察数据，最新评估值在两次评估之间保持；精确固定窗口曲线及35×4完整排名仍以本地reports包为准。
-
-上传在独立进程，队列有界；断网、上传落后或关闭超时会提示，云端可能缺点，训练继续。本地日志与checkpoint是恢复和科学分析依据，不以云端记录恢复模型。SDK日志在RUN_BASE/swanlab，scope目录之外；额外缓存空间须实机检查。云端只显式记录配置和标量，不上传模型/语料。当前本地测试不构成ACP账号与联网验收。
+新版SwanLab每次候选恢复创建独立attempt，config通过training_run_id/resumed_from_step对应同一轨迹；模型恢复以本地checkpoint为准。完整35×4响应表和阶段报告位于RUN_BASE/reports/last1。旧32小时结果不混入新目录。
