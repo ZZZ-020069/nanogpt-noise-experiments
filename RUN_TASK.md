@@ -4,7 +4,11 @@
 
 本说明适用于已经运行32小时的旧版044d3ab任务。先取回轻量记录，保留旧目录，再从本次交付的代码开始新的last1任务。新任务复用已登记输入，从共同未训练初始化开始；旧checkpoint不放入新RUN_BASE，不修改旧metadata。
 
-本次交付标签为 **acp-start-20261101-v2**，它指向包含本说明的本次最新提交；完整commit SHA以本次交付回复和准备任务日志为准。以下代码通过该标签选择此次统一说明后的提交。此前acp-start-20261101标签与分散启动示例属于上一交付，请以本文件为准。smoke和formal必须打印相同的ACP code commit。
+本轮训练固定使用标签 **acp-start-20261101-v2**，预期完整commit为 **241de0dcb7bfd2f3fe761ad08f9ab6302c3cc3f0**。第2、4、5节已写入这个编号，会自动打印预期与实际版本并核对，无需另找交付回复或人工逐字符比较。不一致时立即报错退出。
+
+本指南的自动核对命令更新在main分支；训练标签仍固定在上述commit，不随说明更新而移动。请从GitHub的main分支阅读本指南并复制命令，克隆目录内旧版RUN_TASK.md不包含本次说明修订。服务器训练代码无需git pull到main。此前acp-start-20261101标签与分散启动示例属于上一交付。
+
+所有代码块均使用Bash执行，并保留换行。第1、2节只用CPU，不调用GPU；ACP是否允许单独申请CPU任务取决于平台。若只能使用H100任务环境，也可执行，GPU将闲置，资源计费以平台为准。准备、冒烟和正式任务必须挂载同一份持久化/data/260010171存储。
 
 ## 1. 无需GPU：打包并发回旧32小时记录
 
@@ -78,16 +82,30 @@ D:\港中深RA\VSCode下载\New\gpu-results\old32h-20261101\
 
 不覆盖旧目录nanogpt-noise-experiments-20261030。以下新目录须尚不存在；若已经使用，保留原目录并统一选择另一个新代码路径。
 
-在ACP提交下列准备命令，无需申请训练GPU。该任务结束后再提交冒烟：
+在ACP提交下列准备命令，不使用GPU。该任务成功结束且日志显示“版本核对通过（VERSION CHECK PASSED）”后再提交冒烟：
 
 ```bash
 set -euo pipefail
-git clone --branch acp-start-20261101-v2 --depth 1   https://github.com/ZZZ-020069/nanogpt-noise-experiments.git   /data/260010171/nanogpt-noise-experiments-20261101-v2
+CODE_ROOT=/data/260010171/nanogpt-noise-experiments-20261101-v2
+EXPECTED_COMMIT=241de0dcb7bfd2f3fe761ad08f9ab6302c3cc3f0
+if [[ -e "$CODE_ROOT" || -L "$CODE_ROOT" ]]; then
+  printf 'ERROR: 代码路径已存在，保留原目录并选择新的路径：%s\n' "$CODE_ROOT" >&2
+  exit 2
+fi
+git clone --branch acp-start-20261101-v2 --depth 1 \
+  https://github.com/ZZZ-020069/nanogpt-noise-experiments.git \
+  "$CODE_ROOT"
 
-git -c safe.directory=/data/260010171/nanogpt-noise-experiments-20261101-v2   -C /data/260010171/nanogpt-noise-experiments-20261101-v2 rev-parse HEAD
+ACTUAL_COMMIT="$(git -c safe.directory="$CODE_ROOT" -C "$CODE_ROOT" rev-parse --verify 'HEAD^{commit}')"
+printf '预期版本（Expected commit）: %s\n实际版本（Actual commit）:   %s\n' "$EXPECTED_COMMIT" "$ACTUAL_COMMIT"
+if [[ "$ACTUAL_COMMIT" != "$EXPECTED_COMMIT" ]]; then
+  printf 'ERROR: 版本不一致（VERSION CHECK FAILED），停止；请保留日志和目录，不要启动训练。\n' >&2
+  exit 2
+fi
+printf '版本核对通过（VERSION CHECK PASSED）\n'
 ```
 
-标签克隆后处于detached HEAD是正常情况。记下打印的完整commit，应该与本次交付回复一致。后续启动只使用下方带20261101的新代码路径，不调用旧run_v18_ready.sh或旧日期副本。
+标签克隆后处于detached HEAD是正常情况。成功日志会同时显示上述两串完整编号和通过提示；下载失败或读取commit失败同样会以非零状态退出，不会报告通过。保留任务日志即可，无需手动比较编号。后续启动只使用下方带20261101的新代码路径，不调用旧run_v18_ready.sh或旧日期副本。
 
 ## 3. 在ACP配置密钥与持久目录
 
@@ -108,10 +126,14 @@ export RUN_BASE=/data/260010171/results/nanogpt-v1.8-20261101-v2
 export PYTHON=/data/260010171/envs/nanogpt-py311/bin/python
 
 CODE_ROOT=/data/260010171/nanogpt-noise-experiments-20261101-v2
-EXPECTED_COMMIT="$(git -c safe.directory="$CODE_ROOT" -C "$CODE_ROOT" rev-parse 'refs/tags/acp-start-20261101-v2^{commit}')"
-ACTUAL_COMMIT="$(git -c safe.directory="$CODE_ROOT" -C "$CODE_ROOT" rev-parse HEAD)"
-[[ "$ACTUAL_COMMIT" == "$EXPECTED_COMMIT" ]]
-printf 'Pinned release: %s\n' "$ACTUAL_COMMIT"
+EXPECTED_COMMIT=241de0dcb7bfd2f3fe761ad08f9ab6302c3cc3f0
+ACTUAL_COMMIT="$(git -c safe.directory="$CODE_ROOT" -C "$CODE_ROOT" rev-parse --verify 'HEAD^{commit}')"
+printf '预期版本（Expected commit）: %s\n实际版本（Actual commit）:   %s\n' "$EXPECTED_COMMIT" "$ACTUAL_COMMIT"
+if [[ "$ACTUAL_COMMIT" != "$EXPECTED_COMMIT" ]]; then
+  printf 'ERROR: 版本不一致（VERSION CHECK FAILED），停止；请保留日志和目录，不要启动训练。\n' >&2
+  exit 2
+fi
+printf '版本核对通过（VERSION CHECK PASSED）\n'
 exec bash "$CODE_ROOT/scripts/run_acp.sh" smoke last1
 ```
 
@@ -119,7 +141,7 @@ exec bash "$CODE_ROOT/scripts/run_acp.sh" smoke last1
 
 冒烟成功需要同时满足：
 
-- ACP code commit与第2节及本次交付回复一致，不能仍是044d3ab。
+- 日志显示VERSION CHECK PASSED，随后ACP code commit为本指南固定的241de0dcb7bfd2f3fe761ad08f9ab6302c3cc3f0。
 - 日志显示SMOKE PASSED。
 - 用户登录自己的SwanLab个人空间，看到nanogpt-noise项目及四优化器smoke记录，指标包括evaluation/val、progress/step。
 
@@ -138,10 +160,14 @@ export RUN_BASE=/data/260010171/results/nanogpt-v1.8-20261101-v2
 export PYTHON=/data/260010171/envs/nanogpt-py311/bin/python
 
 CODE_ROOT=/data/260010171/nanogpt-noise-experiments-20261101-v2
-EXPECTED_COMMIT="$(git -c safe.directory="$CODE_ROOT" -C "$CODE_ROOT" rev-parse 'refs/tags/acp-start-20261101-v2^{commit}')"
-ACTUAL_COMMIT="$(git -c safe.directory="$CODE_ROOT" -C "$CODE_ROOT" rev-parse HEAD)"
-[[ "$ACTUAL_COMMIT" == "$EXPECTED_COMMIT" ]]
-printf 'Pinned release: %s\n' "$ACTUAL_COMMIT"
+EXPECTED_COMMIT=241de0dcb7bfd2f3fe761ad08f9ab6302c3cc3f0
+ACTUAL_COMMIT="$(git -c safe.directory="$CODE_ROOT" -C "$CODE_ROOT" rev-parse --verify 'HEAD^{commit}')"
+printf '预期版本（Expected commit）: %s\n实际版本（Actual commit）:   %s\n' "$EXPECTED_COMMIT" "$ACTUAL_COMMIT"
+if [[ "$ACTUAL_COMMIT" != "$EXPECTED_COMMIT" ]]; then
+  printf 'ERROR: 版本不一致（VERSION CHECK FAILED），停止；请保留日志和目录，不要启动训练。\n' >&2
+  exit 2
+fi
+printf '版本核对通过（VERSION CHECK PASSED）\n'
 exec bash "$CODE_ROOT/scripts/run_acp.sh" formal last1
 ```
 
