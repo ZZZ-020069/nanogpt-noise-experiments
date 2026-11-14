@@ -1,40 +1,47 @@
-# NanoGPT 噪声实验：v1.8，先运行 last1
+# NanoGPT：LM Head-only 实验设计
 
-**运行者只需阅读 [RUN_TASK.md：唯一操作指南](RUN_TASK.md)。** 按其中第1至6节依次完成：旧结果打包 → 新代码准备 → 配置密钥 → 一卡冒烟 → 四卡正式运行 → 中断续跑。所有ACP启动命令、路径和版本检查都在该文件中。
+**当前分支：design/lm-head-only-20261114 · 方案版本：LH-QP-20261114-draft2**
 
-本README提供项目与实现概况，不维护第二套启动流程。
+本分支发布“冻结随机初始化的 backbone，只训练完整 LM Head”的实验方案，并研究能否用 Hessian 信息构造二次函数，复现优化器排序。**目前完成的是设计文档；LM Head-only 训练入口尚未实现。**
 
-## 当前协议
+## 从这里开始
 
-| 项目 | 设置 |
+| 文档 | 内容 |
 |---|---|
-| 模型 | GPT-2 124M，12 blocks，统一未训练初始化，单 seed |
-| scope | full、last1、last2、last3、last6、last12，全部使用相同预算 |
-| 当前运行 | last1，仅训练最后一个 block 的 7,079,424 参数 |
-| 噪声 | σ₁={0,.03,.1,.3,.9}；σ₂={0,.0001,.001,.01,.1,1,10}；35 个节点 |
-| 优化器 | AdamW、Adam、SGD-Momentum、Muon；配方不变 |
-| LR 搜索 | 五初始点 {0.1,0.3162278,1,3.162278,10}×基准，三次自适应扩边/加密 |
-| 训练预算 | 每候选 3815 steps，实际 2,000,158,720 tokens |
-| 调度 | 100M tokens 线性 warmup，再余弦衰减至峰值的 10% |
-| 全局 batch | 512×1024=524288 tokens；单卡 micro=4，累积128次 |
-| 评估 | 每100M、step0及终点，合计21次；最终验证 loss 选择 winner |
-| 失败规则 | 只有 NaN/Inf 提前数值失败；有限但较差的候选不淘汰；无梯度裁剪 |
-| 并行 | 四 H100、四个独立单卡 worker；同一 job 内八个候选顺序运行 |
+| [一页审阅摘要](docs/experiments/lm-head-only/20261114-draft2/README.md) | 研究路线、基础对齐与必要改动 |
+| [完整实验设计](docs/experiments/lm-head-only/20261114-draft2/EXPERIMENT_DESIGN.md) | 训练、Hessian 采样、二次代理及验证方案 |
+| [来源与校验清单](docs/experiments/lm-head-only/20261114-draft2/manifest.json) | 主设计来源、基线提交与快照 SHA-256 |
 
-每 scope 有140 jobs、最多1120条独立候选；六个 scope 总计6720条候选。2B 是本次选定的有限预算，未声称与旧2.6B等价；last1 的约10–15天只是条件估算，尚无目标硬件实测保证。last1 不是预训练模型微调；冻结的前11层、embedding、final LayerNorm与输出头均保持共同随机初始化。last12仍冻结block外参数，因此不等于full。
+## 这次研究什么
 
-唯一设计来源为工作区主设计；仓库中的 [发布快照](docs/nanogpt_experiment_design.md)与之同步，不单独维护另一套协议。快照中带日期的旧讨论和pilot记录不覆盖v1.8当前决定。
+1. 从统一未训练初始化开始，冻结其余参数，训练整个 50304×768 的 LM Head。
+2. 比较 SGD、Adam、AdamW 和直接更新 Head 的 Muon-head。
+3. 在初始化与训练过程中采样 LM Head 的 Hessian；采样只用于测量，不缩小训练范围。
+4. 构造二次参照和统计结构代理，检验优化器排序能否保留。
 
-## 实现与验收
+Head 与输入 embedding 必须同值解除权重共享，保证 embedding 始终冻结。Muon 的参数分组需要单独调整，因此记录为 Muon-head。
 
-- 需要Linux、Python≥3.11、CUDA版PyTorch≥2.6,<3、NumPy、matplotlib和支持BF16的GPU。ACP入口检查环境，启用SwanLab后安装其SDK。
-- 四张GPU运行四个独立候选，空闲GPU从按噪声行优先排列的队列领取下一搜索；每搜索内部顺序完成八个LR候选。
-- 数据输入首次在服务器制备并登记，所有候选复用同一份输入。已登记v1.8输入无需重做。
-- 本地checkpoint用于恢复，模型、优化器、步数和配对随机性随断点恢复。Linux使用持久.lease上的内核flock，禁止手工删除.lease。
-- 每job最终仅保留winner的完整checkpoint，候选诊断无损压缩。last1静态空间估算84.03GB，另计smoke、阶段报告、SwanLab缓存与环境；实际存储需目标平台核验。
-- 自动报告每5分钟及完整行完成后更新RUN_BASE/reports/last1/latest.zip，含离线HTML、总表与候选诊断。SwanLab上传失败保留本地记录，完整科学分析依据本地文件。
-- 最终scope_manifest.json用于逐文件SHA-256校验；用户下载直接接收D盘，校验成功前保留服务器结果。只在last1完成并分析后决定下一阶段。
+## 与 last-k 保持基础对齐
 
-本地回归命令为`python -m unittest discover -s tests -v`。[验证记录](docs/VALIDATION.md)区分CPU/CI检查与尚待执行的目标硬件验收。联合pilot与双RTX测速是历史或探索工具，不属于当前正式启动流程。
+| 项目 | 对齐要求 |
+|---|---|
+| 模型与数据 | 保持架构、语料、初始化数值和数据窗口 |
+| 预算与搜索 | 每候选约 2B tokens / 3815 步，五初始加三追加学习率 |
+| Batch 与调度 | 全局 524288 tokens，原 warmup/cosine |
+| 噪声与随机性 | 原 35 点网格、噪声公式、单 seed |
+| 精度与配方 | BF16 autocast、FP32 主参数和梯度、原超参数、无裁剪 |
+| 主要评价 | 完整预算终点 validation loss 选学习率和排名 |
 
-模型参考nanoGPT，保留[MIT声明](third_party/nanogpt-LICENSE)。
+只对训练范围、权重共享、Muon 适用参数组和曲率观测作必要修改。高精度 Hessian 分析是离线诊断，不改变训练精度。采样规模与代理验收阈值仍以完整方案中的草案标识为准。
+
+## 与旧实验隔离
+
+- 新方案位于独立分支和独立版本目录，不覆盖旧的 [v1.8 设计](docs/nanogpt_experiment_design.md)。
+- main、训练代码、配置与 [RUN_TASK.md](RUN_TASK.md) 保持原样；RUN_TASK.md 仍只用于已有 v1.8 实验，不是 LM Head-only 的启动说明。
+- 本分支首页更新为新方案导航；[旧版首页](https://github.com/ZZZ-020069/nanogpt-noise-experiments/blob/bb3cf72e1113d0e9ceb903515772bfb1d1161df9/README.md)保留在基线提交中。
+- 后续实现和运行须使用独立的 lm_head_only / LH-QP 实验身份及输出目录，不能接续 last1 的 checkpoint 或混用结果。
+- 发布文档不代表已启动训练；本次没有部署或运行新实验。
+
+唯一编辑来源是工作区主设计的第 14 章。本仓库版本目录保存发布快照，后续先修改主设计，再生成新版本；首页仅提供导航与摘要。
+
+模型实现参考 nanoGPT，保留 [MIT 声明](third_party/nanogpt-LICENSE)。
