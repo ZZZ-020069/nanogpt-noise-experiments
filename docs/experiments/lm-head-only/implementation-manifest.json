@@ -1,0 +1,127 @@
+{
+  "schema": 1,
+  "design": "LH-QP-20261114-draft2",
+  "status": "implemented_cpu_validated_gpu_pending",
+  "branch": "design/lm-head-only-20261114",
+  "base_commit": "bb3cf72e1113d0e9ceb903515772bfb1d1161df9",
+  "source": {
+    "workspace_relative_path": "VSCode下载/New/nanogpt_experiment_design.md",
+    "section": "14.16",
+    "sha256": "724072b15ffca00f2739f470f2c2368ed89c805e90039682a8fd7bdbff51edf7"
+  },
+  "code": {
+    "sha256": "13f26802955431ba1c786168ce3ef84691a0cf05a0a21af4949bd1ea27c30489",
+    "files": {
+      "nanogpt_noise/__init__.py": "ede0cafbec03bdb34484b793b02294729b26139bd960f19f077659a1ac618b23",
+      "nanogpt_noise/analyze.py": "2fd34bb1790191822ccc78960b472faaafccb9a4ce1a33294ba029e1fd556652",
+      "nanogpt_noise/artifacts.py": "d42431b6b639590063fd9013ecf73e5073092e845d23bde02a30313a9d1678e5",
+      "nanogpt_noise/data.py": "03eecc9fee9bc99a35bc30cb2cf971bd090239ff258689bb84af22e9ecff5344",
+      "nanogpt_noise/input_bundle.py": "7a648e0c040ac445fb4e051d02bbcaaba74f248a9f2daa0a678fff8211fe005d",
+      "nanogpt_noise/jobs.py": "9a06284ee2acedb0731e035ea259d0b50a4e84b39104fa7d66c3755c2ff2ffba",
+      "nanogpt_noise/model.py": "fe44f850ade595f3ddad855d95eea1d1cbf538f47d9c1307bac9d27efd82d697",
+      "nanogpt_noise/node.py": "4600cbfa8edec285b5e149473a1de9889bc7142a321421d3bcd00f300cb908fe",
+      "nanogpt_noise/noise.py": "954c3c8430e272736bc2dfa22294fe4b8168d13133d67733fb06e1bfa1e63150",
+      "nanogpt_noise/optim.py": "bc5ff0409a6c838cacb9551a2c227521f961a53e80ace887dfe571b4af158318",
+      "nanogpt_noise/pool.py": "5f46ecd1a7bf1bc99a2d501cdbb7cb64e64280d6dad968557c4a1ee43a14d330",
+      "nanogpt_noise/preflight.py": "e3f7197fb7155754e95439178e2c9936eb55019a6cf27d6014673dc5dbf4aaa1",
+      "nanogpt_noise/prepare.py": "ec829769373fd6b03e59a0afbcc78560d4c0eb98441d63237b88b2e8e5b86b98",
+      "nanogpt_noise/progress.py": "e6f2000f096185c5367d2a62cff54948be1a3a072b507a2fef68228d83adece7",
+      "nanogpt_noise/protocol.py": "6893f02ac7eaa2718bc03c4a4b4194f90455480a97f17d264cc449b37f430c9d",
+      "nanogpt_noise/scope.py": "22bf784730fba45bd5ff1dca8992486aef15ba41bb457f599f04bd2497b180e4",
+      "nanogpt_noise/search.py": "4bfde7fa721edc1a95e4a4822cd8e6b4fd5b2695bf1423f262500d17c6b5ae5b",
+      "nanogpt_noise/smoke.py": "1fd206a0b0a3ca5a2947781f78be0bd6fa1fa0005f3882fa52d05cca4a314da3",
+      "nanogpt_noise/storage.py": "cf904060119f7184e5d3a31d10bca416aab6bbe738663b34b5f0fa078c4956c2",
+      "nanogpt_noise/telemetry.py": "d40acb33d1a418ff8c0619f454f48a99dc724db7ae10e1454225dce63df290a4",
+      "nanogpt_noise/train.py": "45e2a95855a6ee571d8530cc97b6e910c84f8f40280701d00e5efa74434439ee",
+      "docs/nanogpt_experiment_design.md": "37b7f25a71e7c230bb5c95b8b48fcfdebff69e54eb4bcd957549a5e5f2213cf7",
+      "nanogpt_noise/lm_head/__init__.py": "8302238bf9f0bdcd19d7c1835c81124b44710e61832451cd73645b7e4d386313",
+      "nanogpt_noise/lm_head/__main__.py": "53c1f1dea979d433d453543b3beb017917a049d212c2fa2998bd7c39346ad85f",
+      "nanogpt_noise/lm_head/analyze.py": "31265c3e6580dc9eca8e25d6b778ebd029291e7db9f187953a75e00dd085864d",
+      "nanogpt_noise/lm_head/curvature.py": "33ea0301b75b6e1e0794105b57b1bff34a601714379387dad7fd923ad9c6d83f",
+      "nanogpt_noise/lm_head/diagnostics.py": "b95e2f4376bf014d37ad775d775687cb2b4a58ef111d921a4b21e48d44d0ddb2",
+      "nanogpt_noise/lm_head/measure.py": "3ad57dc87a9adda7dad79cd82379aeac5f175ca4815d9ab1e6daea336e8e28d2",
+      "nanogpt_noise/lm_head/model.py": "252832be41f4d76085f69623c667517114be7afd58f37a379e498a739ca36617",
+      "nanogpt_noise/lm_head/protocol.py": "f5d2f0096d847365c24f6dc9a137dfb06a6b0c99037043b13cf81156635e7cbe",
+      "nanogpt_noise/lm_head/runner.py": "abbe06942ea43bba37a6b08d161702a33858b61357829ea1c70184bd7a4ea140",
+      "nanogpt_noise/lm_head/train.py": "9c376594f58706e0a5a47d34c6940296421674b8d96054dc3ca7d3b6e1acf87d"
+    }
+  },
+  "validation": {
+    "unique_passed": 138,
+    "skipped_posix": 7,
+    "new_python": 12,
+    "new_shell": 4,
+    "formal_training_started": false,
+    "server_accessed": false
+  },
+  "files": {
+    "docs/experiments/lm-head-only/IMPLEMENTATION_RECORD.md": {
+      "sha256": "f9dc8c0cd5038844a1949023c25424a26857d8b8975cecdf31c0a1e6ca1ab043",
+      "bytes": 3929
+    },
+    "docs/experiments/lm-head-only/IMPLEMENTATION_VALIDATION.md": {
+      "sha256": "f3a9831a9c880055f251d15eef5f2a6c59e1ee507c784a03770bd77270cd96ef",
+      "bytes": 3754
+    },
+    "LM_HEAD_RUN.md": {
+      "sha256": "ecf537c4a16b175e1d37994787e6e93960444533d2bfd847ea7d4b1cbe4f38a6",
+      "bytes": 6982
+    },
+    "nanogpt_noise/lm_head/__init__.py": {
+      "sha256": "8302238bf9f0bdcd19d7c1835c81124b44710e61832451cd73645b7e4d386313",
+      "bytes": 74
+    },
+    "nanogpt_noise/lm_head/__main__.py": {
+      "sha256": "53c1f1dea979d433d453543b3beb017917a049d212c2fa2998bd7c39346ad85f",
+      "bytes": 5407
+    },
+    "nanogpt_noise/lm_head/analyze.py": {
+      "sha256": "31265c3e6580dc9eca8e25d6b778ebd029291e7db9f187953a75e00dd085864d",
+      "bytes": 5815
+    },
+    "nanogpt_noise/lm_head/curvature.py": {
+      "sha256": "33ea0301b75b6e1e0794105b57b1bff34a601714379387dad7fd923ad9c6d83f",
+      "bytes": 4146
+    },
+    "nanogpt_noise/lm_head/diagnostics.py": {
+      "sha256": "b95e2f4376bf014d37ad775d775687cb2b4a58ef111d921a4b21e48d44d0ddb2",
+      "bytes": 4527
+    },
+    "nanogpt_noise/lm_head/measure.py": {
+      "sha256": "3ad57dc87a9adda7dad79cd82379aeac5f175ca4815d9ab1e6daea336e8e28d2",
+      "bytes": 16825
+    },
+    "nanogpt_noise/lm_head/model.py": {
+      "sha256": "252832be41f4d76085f69623c667517114be7afd58f37a379e498a739ca36617",
+      "bytes": 3979
+    },
+    "nanogpt_noise/lm_head/protocol.py": {
+      "sha256": "f5d2f0096d847365c24f6dc9a137dfb06a6b0c99037043b13cf81156635e7cbe",
+      "bytes": 1391
+    },
+    "nanogpt_noise/lm_head/runner.py": {
+      "sha256": "abbe06942ea43bba37a6b08d161702a33858b61357829ea1c70184bd7a4ea140",
+      "bytes": 12183
+    },
+    "nanogpt_noise/lm_head/train.py": {
+      "sha256": "9c376594f58706e0a5a47d34c6940296421674b8d96054dc3ca7d3b6e1acf87d",
+      "bytes": 22216
+    },
+    "README.md": {
+      "sha256": "d9271d9e80c80f9803cd85a618150168e8f5558d4c80d4dcdd5beb11e0d0b8dc",
+      "bytes": 3398
+    },
+    "scripts/run_lm_head.sh": {
+      "sha256": "22b2a485cd2ec14af61f81f186239762344299aadedb087b136ac107038d1e0a",
+      "bytes": 3008
+    },
+    "tests/test_lm_head.py": {
+      "sha256": "28ef0602925bbc5c3b66d5491d8e0b8c3a8cdf7789d175d3089165f4ecf8d339",
+      "bytes": 15674
+    },
+    "tests/test_lm_head_shell.py": {
+      "sha256": "db1df292168265c8730195d9acf118bc44e5a8d17825f3b112ef4ce3460a7807",
+      "bytes": 3025
+    }
+  }
+}

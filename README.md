@@ -2,12 +2,13 @@
 
 **当前分支：design/lm-head-only-20261114 · 方案版本：LH-QP-20261114-draft2**
 
-本分支发布“冻结随机初始化的 backbone，只训练完整 LM Head”的实验方案，并研究能否用 Hessian 信息构造二次函数，复现优化器排序。**目前完成的是设计文档；LM Head-only 训练入口尚未实现。**
+本分支发布“冻结随机初始化的 backbone，只训练完整 LM Head”的实验方案，并研究能否用 Hessian 信息构造二次函数，复现优化器排序。现已提供独立的 G/T/K 训练代码、Hessian 子块测量和启动脚本。实现检查与目标 GPU 验收状态见 [验证记录](docs/experiments/lm-head-only/IMPLEMENTATION_VALIDATION.md)。
 
 ## 从这里开始
 
 | 文档 | 内容 |
 |---|---|
+| [启动与恢复说明](LM_HEAD_RUN.md) | 输入核对、smoke、clean、曲率测量和后续阶段命令 |
 | [一页审阅摘要](docs/experiments/lm-head-only/20261114-draft2/README.md) | 研究路线、基础对齐与必要改动 |
 | [完整实验设计](docs/experiments/lm-head-only/20261114-draft2/EXPERIMENT_DESIGN.md) | 训练、Hessian 采样、二次代理及验证方案 |
 | [来源与校验清单](docs/experiments/lm-head-only/20261114-draft2/manifest.json) | 主设计来源、基线提交与快照 SHA-256 |
@@ -37,10 +38,10 @@ Head 与输入 embedding 必须同值解除权重共享，保证 embedding 始�
 ## 与旧实验隔离
 
 - 新方案位于独立分支和独立版本目录，不覆盖旧的 [v1.8 设计](docs/nanogpt_experiment_design.md)。
-- main、训练代码、配置与 [RUN_TASK.md](RUN_TASK.md) 保持原样；RUN_TASK.md 仍只用于已有 v1.8 实验，不是 LM Head-only 的启动说明。
+- main、原有训练代码、配置与 [RUN_TASK.md](RUN_TASK.md) 保持原样；RUN_TASK.md 仍只用于已有 v1.8 实验，不是 LM Head-only 的启动说明。
 - 本分支首页更新为新方案导航；[旧版首页](https://github.com/ZZZ-020069/nanogpt-noise-experiments/blob/bb3cf72e1113d0e9ceb903515772bfb1d1161df9/README.md)保留在基线提交中。
-- 后续实现和运行须使用独立的 lm_head_only / LH-QP 实验身份及输出目录，不能接续 last1 的 checkpoint 或混用结果。
-- 发布文档不代表已启动训练；本次没有部署或运行新实验。
+- 新实现和运行使用独立的 lm_head_only / LH-QP 实验身份及输出目录，不能接续 last1 的 checkpoint 或混用结果。
+- 实现检查采用小规模合成 CPU 数据；本次没有部署或启动正式实验。
 
 唯一编辑来源是工作区主设计的第 14 章。本仓库版本目录保存发布快照，后续先修改主设计，再生成新版本；首页仅提供导航与摘要。
 

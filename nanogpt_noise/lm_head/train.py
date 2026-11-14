@@ -1,0 +1,426 @@
+"""Independent Head candidate. Adapted from the frozen v1.8 training sequence.
+
+Only this module changes scope, objective and checkpoint payload.
+"""
+import argparse
+import contextlib
+from datetime import datetime,timezone
+from dataclasses import asdict
+import math
+import os
+from pathlib import Path
+import signal
+import time
+import numpy as np
+import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from .model import build_optimizer, HeadGPT
+from ..telemetry import Telemetry
+from ..artifacts import (read_json,write_json,save_checkpoint,tensor_hash,digest,
+                        environment,lock,cleanup_atomic_temps)
+from ..data import batch,verify
+from ..model import Shape
+from ..noise import inject,norm,ratio
+from .protocol import Budget, configuration, CENTERS, require_current_input, code_identity, candidate_identity
+from ..input_bundle import verify_bundle
+from ..artifacts import file_hash
+
+
+class NumericalFailure(Exception):
+    pass
+
+
+class Runtime:
+    def __init__(self, cpu=False):
+        self.world = int(os.environ.get('WORLD_SIZE','1'))
+        self.rank = int(os.environ.get('RANK','0'))
+        self.local_rank = int(os.environ.get('LOCAL_RANK','0'))
+        if cpu:
+            self.device = torch.device('cpu')
+            torch.set_num_threads(1)
+        else:
+            if not torch.cuda.is_available() or not torch.cuda.is_bf16_supported():
+                raise RuntimeError('CUDA with BF16 required; CPU is only allowed for explicit tests')
+            self.device = torch.device('cuda',self.local_rank)
+            torch.cuda.set_device(self.device)
+            torch.backends.cuda.matmul.allow_tf32 = False
+            torch.backends.cudnn.allow_tf32 = False
+        if self.world>1 and not dist.is_initialized():
+            test_store = os.environ.get('NANOGPT_TEST_RENDEZVOUS') if cpu else None
+            kwargs = dict(store=dist.FileStore(test_store,self.world)) if test_store else {}
+            dist.init_process_group('gloo' if cpu else 'nccl',
+                                    rank=self.rank,world_size=self.world,**kwargs)
+
+    def barrier(self):
+        if self.world>1:
+            dist.barrier()
+
+    def broadcast(self, value):
+        values = [value if self.rank==0 else None]
+        if self.world>1:
+            dist.broadcast_object_list(values,src=0)
+        return values[0]
+
+    def any(self, flag):
+        t = torch.tensor(int(flag),device=self.device)
+        if self.world>1:
+            dist.all_reduce(t,op=dist.ReduceOp.MAX)
+        return bool(t.item())
+
+    def check(self, named):
+        named=list(named)
+        flags=[torch.isfinite(t).all().to(self.device) for _,t in named]
+        failed=bool(flags) and not bool(torch.stack(flags).all())
+        bad = next((n for n,t in named if not bool(torch.isfinite(t).all())),None) if failed else None
+        if self.any(bad is not None):
+            fields = [None]*self.world
+            if self.world>1:
+                dist.all_gather_object(fields,bad)
+            else:
+                fields=[bad]
+            raise NumericalFailure(next(v for v in fields if v is not None))
+
+    def autocast(self):
+        return torch.autocast('cuda',dtype=torch.bfloat16) if self.device.type=='cuda' else contextlib.nullcontext()
+
+
+@torch.no_grad()
+def evaluate(model, arrays, indices, budget, micro, rt):
+    model.eval()
+    losses = {}
+    for split in ('train','val'):
+        positions = indices['eval_'+split][rt.rank::rt.world]
+        total = torch.zeros(3,dtype=torch.float64,device=rt.device)
+        for chunk in positions.split(micro):
+            if not len(chunk):
+                continue
+            x,y = batch(arrays[split],chunk,budget.sequence,rt.device)
+            with rt.autocast():
+                features = model.features(x)
+                loss = model.loss_from_features(features,y,'G')
+                objective = loss if model.objective=='G' else model.loss_from_features(features,y)
+            total[0] += loss.double()*len(chunk)
+            total[1] += len(chunk)
+            total[2] += objective.double()*len(chunk)
+        if rt.world>1:
+            dist.all_reduce(total)
+        rt.check([(f'eval_{split}_loss',total)])
+        losses[split] = float(total[0]/total[1])
+        losses[split+'_objective'] = float(total[2]/total[1])
+    model.train()
+    return losses
+
+
+def run(config, data, artifacts, output, *, micro=4, runtime=None,
+        smoke_steps=None, test=False, pause_after=None, pause_file=None):
+    rt = runtime or Runtime(cpu=test)
+    if config.get('statistics') and config['objective'] != 'K':
+        raise ValueError('statistics artifact is only valid for K')
+    output, data, artifacts = Path(output),Path(data),Path(artifacts)
+    mode = 'test' if test else ('smoke' if smoke_steps is not None else 'formal')
+    if rt.world != 1:
+        raise ValueError('Head runner uses independent single-GPU candidates; launch via worker pool')
+    candidate_identity(config)
+    if rt.device.type=='cpu' and not test:
+        raise ValueError('CPU outputs cannot be formal or H100 smoke results')
+    with lock(output) if rt.rank==0 else contextlib.nullcontext():
+        rt.barrier()
+        return _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,pause_file)
+
+
+def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,pause_file=None):
+    # Every rank checks identity: mismatched node-local data must not silently train.
+    ident = verify(data,artifacts)
+    if ident['tiny'] != (mode=='test'):
+        raise ValueError('tiny fixtures cannot be used for real-model runs')
+    if mode != 'test':
+        verify_bundle(data.parent, data, artifacts)
+        require_current_input(ident)
+        expected = configuration(config['objective'], config['optimizer'], config['node'], config['exponent'])
+        if any(config.get(key) != value for key, value in expected.items()):
+            raise ValueError('candidate config does not match the current protocol')
+    budget, shape = Budget(**ident['budget']),Shape(**ident['shape'])
+    accumulation = budget.accumulations(rt.world,micro)
+    target = budget.steps if smoke_steps is None else smoke_steps
+    if not 1<=target<=budget.steps:
+        raise ValueError('invalid smoke step count')
+    artifact_hash = file_hash(config['statistics']) if config.get('statistics') else None
+    execution = dict(statistics_sha256=artifact_hash, config=config,mode=mode,artifact_id=ident['id'],
+                     code=code_identity()['sha256'],world=rt.world,micro=micro,
+                     device_type=rt.device.type,torch=str(torch.__version__),
+                     cuda=torch.version.cuda,target_steps=target)
+    identity = digest(execution)
+    metadata_path = output/'metadata.json'
+    if metadata_path.exists() and read_json(metadata_path)['run_id'] != identity:
+        raise ValueError('refusing incompatible resume/output reuse: config, data, code or layout changed')
+    previous = {}
+    if (output/'status.json').exists():
+        previous = read_json(output/'status.json')
+        if previous['status'] in ('completed','numerical_failure'):
+            return previous
+    torch.manual_seed(1337)
+    model = HeadGPT(shape)
+    model.load_state_dict(torch.load(artifacts/'initial.pt',map_location='cpu',weights_only=True))
+    if tensor_hash(model.named_parameters()) != ident['initialization_tensor_hash']:
+        raise ValueError('initial tensor identity mismatch')
+    statistics = None
+    if config['objective'] == 'K':
+        from .measure import load_statistics
+        statistics = load_statistics(config['statistics'], ident, shape, allow_test=(mode=='test'))
+    model.activate_head(config['objective'], statistics)
+    named = [(n,p) for n,p in model.named_parameters() if p.requires_grad]
+    dimension = sum(p.numel() for _,p in named)
+    if mode!='test':
+        expected = 50304*768
+        if dimension != expected:
+            raise ValueError('unexpected trainable parameter count')
+    frozen = [(n,p) for n,p in model.named_parameters() if not p.requires_grad]
+    frozen_hash = tensor_hash(frozen)
+    initial = {n:model.reference_head.to(rt.device) for n,p in named}
+    model.to(rt.device)
+    profiling = smoke_steps is not None
+    timings = dict(features_seconds=0., forward_seconds=0., backward_seconds=0.,
+                   optimizer_seconds=0., evaluation_seconds=0., checkpoint_seconds=0.)
+    model.profile = timings if profiling else None
+    if profiling and rt.device.type=='cuda':
+        torch.cuda.reset_peak_memory_stats(rt.device)
+    def stamp():
+        if profiling and rt.device.type=='cuda':torch.cuda.synchronize(rt.device)
+        return time.perf_counter() if profiling else 0.
+    def persist(path,value):
+        before=stamp()
+        save_checkpoint(path,value)
+        if profiling:timings['checkpoint_seconds']+=stamp()-before
+    # References collected before .to() remain valid for ordinary CPU/CUDA moves.
+    named = [(n,p) for n,p in model.named_parameters() if p.requires_grad]
+    frozen = [(n,p) for n,p in model.named_parameters() if not p.requires_grad]
+    bundle = build_optimizer(named,config['optimizer'],config['peak_lr'])
+    metadata = dict(run_id=identity,execution=execution,environment=environment(rt.device),
+                    artifact_identity=ident,D=dimension,frozen_hash=frozen_hash,
+                    parameters=[dict(name=n,shape=list(p.shape),count=p.numel(),trainable=p.requires_grad)
+                                for n,p in model.named_parameters()],optimizer_groups=bundle.groups)
+    if rt.rank==0:
+        write_json(metadata_path,metadata)
+    indices = torch.load(artifacts/'windows.pt',map_location='cpu',weights_only=True)
+    step, processed, best, evaluations = 0,0,float('inf'),[]
+    latest = output/'latest.pt'
+    final = output/'final.pt'
+    resume_checkpoint = latest if latest.exists() else (final if final.exists() else None)
+    if resume_checkpoint is not None:
+        state = torch.load(resume_checkpoint,map_location=rt.device,weights_only=True)
+        if state['run_id']!=identity:
+            raise ValueError('checkpoint belongs to a different candidate')
+        if state['backbone_hash'] != frozen_hash or state['input_id'] != ident['id']:
+            raise ValueError('checkpoint frozen backbone/input mismatch')
+        if state['head'].shape != model.lm_head.weight.shape:
+            raise ValueError('checkpoint Head shape mismatch')
+        with torch.no_grad():
+            model.lm_head.weight.copy_(state['head'])
+        bundle.load_state_dict(state['optimizer'])
+        step,processed,best,evaluations = state['step'],state['tokens'],state['best'],state['evaluations']
+    elif previous.get('step',0)>0 or any((output/'steps').glob('*.json')):
+        raise RuntimeError('checkpoint missing after training progress; refusing to restart from zero')
+    # A hard interruption can leave diagnostics beyond the durable checkpoint.
+    # These updates will be replayed; do not let stale records survive a later failure.
+    if rt.rank==0:
+        cleanup_atomic_temps(output/'steps')
+        for path in (output/'steps').glob('*.json'):
+            if path.stem.isdigit() and int(path.stem)>step:
+                path.unlink()
+        if evaluations:
+            write_json(output/'evaluations.json',evaluations)
+    # Keep bucket layout fixed across construction/resume. Default DDP rebuilds
+    # buckets after its first backward; a fresh resumed reducer would otherwise
+    # use a different reduction order than an uninterrupted warmed-up reducer.
+    # In PyTorch 2.x find_unused_parameters=True with static_graph=False disables
+    # this rebuild. Missing trainable gradients remain an explicit error below.
+    wrapped = DDP(model,device_ids=[rt.local_rank] if rt.device.type=='cuda' else None,
+                  broadcast_buffers=False,find_unused_parameters=True,
+                  static_graph=False) if rt.world>1 else model
+    if rt.rank==0 and mode!='test':
+        print(f"[{mode}] {config['scope']}/{config['optimizer']} node={config['node']} "
+              f"peak_lr={config['peak_lr']:.8g} world={rt.world} micro={micro} "
+              f"accumulation={accumulation} step={step}/{target} output={output}", flush=True)
+    interrupted = [False]
+    durable_step = step if resume_checkpoint is not None else None
+    last_metrics = {}
+
+    telemetry = None
+
+    def publish_progress(kind='running'):
+        if rt.rank==0:
+            write_json(output/'progress.json',dict(run_id=identity,mode=mode,state=kind,
+                       updated_at=datetime.now(timezone.utc).isoformat(),step=step,tokens=processed,
+                       target_steps=target,checkpoint_step=durable_step,D=dimension,
+                       last_verified_eval_step=evaluations[-1]['step'] if evaluations else None,
+                       metrics=last_metrics))
+            if telemetry is not None: telemetry.log(step,processed,last_metrics,evaluations,kind)
+    old_handlers = {}
+    for sig in (signal.SIGTERM,signal.SIGINT):
+        old_handlers[sig] = signal.getsignal(sig)
+        signal.signal(sig,lambda *_:interrupted.__setitem__(0,True))
+
+    def snapshot():
+        return dict(run_id=identity,head=model.lm_head.weight.detach(),backbone_hash=frozen_hash,
+                    input_id=ident['id'],optimizer=bundle.state_dict(),
+                    step=step,tokens=processed,best=best,evaluations=evaluations,
+                    execution=execution,artifact_identity=ident,
+                    rng_reconstruction=dict(next_step=step,noise_seed=config['seeds']['noise'],
+                                            windows_hash=ident['artifacts']['windows.pt']))
+
+    def status(kind, **extra):
+        value = dict(status=kind,mode=mode,step=step,tokens=processed,
+                     target_steps=target,run_id=identity,**extra)
+        if rt.rank==0:
+            write_json(output/'status.json',value)
+            publish_progress(kind)
+        rt.barrier()
+        return value
+
+    def checkpoint_evaluation():
+        nonlocal best,durable_step
+        before=stamp()
+        values = evaluate(model,arrays,indices,budget,micro,rt)
+        if profiling:timings['evaluation_seconds']+=stamp()-before
+        if tensor_hash(frozen)!=frozen_hash:
+            raise RuntimeError('frozen parameter checksum changed')
+        if rt.world>1:
+            replica_hashes=[None]*rt.world
+            dist.all_gather_object(replica_hashes,tensor_hash(model.named_parameters()))
+            if len(set(replica_hashes))!=1:
+                raise RuntimeError('DDP replicas differ; check synchronization and noise RNG')
+        item = dict(step=step,tokens=step*budget.step_tokens,**values)
+        evaluations.append(item)
+        best = min(best,values['val'])
+        if rt.rank==0:
+            write_json(output/'evaluations.json',evaluations)
+            if mode!='test':
+                print(f"eval step={step}/{target} train={values['train']:.6f} "
+                      f"val={values['val']:.6f}", flush=True)
+            persist(latest,snapshot())
+            durable_step=step
+            publish_progress()
+        rt.barrier()
+
+    arrays = {s:np.memmap(data/f'{s}.bin',dtype='<u2',mode='r') for s in ('train','val')}
+    started = time.monotonic()
+    segment_start = step
+    try:
+        telemetry = None
+        publish_progress()
+        rt.check([('parameters:'+n,p) for n,p in model.named_parameters()])
+        rt.check([('optimizer_state',t) for t in bundle.state_tensors()])
+        if not evaluations:
+            checkpoint_evaluation()
+        while step<target:
+            if rt.any(interrupted[0] or (pause_file is not None and Path(pause_file).exists())):
+                if rt.rank==0:
+                    save_checkpoint(latest,snapshot())
+                    durable_step=step
+                return status('infrastructure_failure',reason='paused; resume same candidate')
+            bundle.zero_grad()
+            lr = config['peak_lr']*budget.multiplier(step*budget.step_tokens)
+            bundle.set_lr(lr)
+            positions = indices['train'][step].reshape(rt.world,-1)[rt.rank]
+            train_loss = torch.zeros((),device=rt.device,dtype=torch.float64)
+            diagnostic = step==0 or (step+1)%10==0 or step+1==target
+            for i,chunk in enumerate(positions.split(micro)):
+                sync = wrapped.no_sync() if rt.world>1 and i<accumulation-1 else contextlib.nullcontext()
+                with sync:
+                    x,y = batch(arrays['train'],chunk,budget.sequence,rt.device)
+                    before=stamp()
+                    with rt.autocast():
+                        loss = wrapped(x,y)
+                    if profiling:timings['forward_seconds']+=stamp()-before
+                    processed += micro*rt.world*budget.sequence
+                    rt.check([('training_loss',loss)])
+                    train_loss += loss.detach().double()/accumulation
+                    before=stamp()
+                    (loss/accumulation).backward()
+                    if profiling:timings['backward_seconds']+=stamp()-before
+            if rt.world>1:
+                dist.all_reduce(train_loss)
+                train_loss /= rt.world
+            if any(p.grad is None for _,p in named):
+                raise RuntimeError('missing trainable gradient')
+            rt.check([('gradient:'+n,p.grad) for n,p in named])
+            rt.check([('parameters:'+n,p) for n,p in model.named_parameters()])
+            rt.check([('optimizer_state',t) for t in bundle.state_tensors()])
+            metrics = inject(named,config['sigma1'],config['sigma2'],step,diagnostic)
+            rt.check([('noisy_gradient:'+n,p.grad) for n,p in named])
+            before = [p.detach().clone() for _,p in named] if diagnostic else None
+            optimizer_started=stamp()
+            bundle.step()
+            if profiling:timings['optimizer_seconds']+=stamp()-optimizer_started
+            rt.check([('updated_parameters:'+n,p) for n,p in model.named_parameters()])
+            rt.check([('updated_optimizer_state',t) for t in bundle.state_tensors()])
+            step += 1
+            if diagnostic:
+                update = norm(p.detach()-old for (_,p),old in zip(named,before))
+                metrics.update(parameter_norm=norm(p for _,p in named),update_norm=update,
+                               displacement=norm(p.detach()-initial[n] for n,p in named),
+                               update_to_gradient=ratio(update,metrics['gradient_norm']))
+                del before
+            metrics.update(step=step,tokens=processed,train_loss=float(train_loss),lr=lr,
+                           auxiliary_lr=None,objective=config['objective'],
+                           finite=True,elapsed_seconds=time.monotonic()-started)
+            if rt.rank==0:
+                write_json(output/'steps'/f'{step:06d}.json',metrics)
+                if diagnostic:
+                    last_metrics=dict(metrics)
+                    publish_progress()
+                if diagnostic and mode!='test':
+                    print(f"step={step}/{target} tokens={processed} "
+                          f"loss={float(train_loss):.6f} lr={lr:.8g} "
+                          f"elapsed={time.monotonic()-started:.1f}s", flush=True)
+            if (rt.rank==0 and config['node']==0 and config['objective']=='G'
+                    and mode!='smoke' and step in (191,1908,3815,target)):
+                save_checkpoint(output/'analysis'/f'head-{step:06d}.pt',
+                                dict(head=model.lm_head.weight.detach(), step=step,
+                                     run_id=identity, input_id=ident['id'],
+                                     backbone_hash=frozen_hash, config=config))
+            if budget.evaluate_at(step) or step==target:
+                checkpoint_evaluation()
+            stop = rt.any(interrupted[0] or (pause_after is not None and step>=pause_after)
+                          or (pause_file is not None and Path(pause_file).exists()))
+            if stop and step<target:
+                if rt.rank==0:
+                    save_checkpoint(latest,snapshot())
+                    durable_step=step
+                return status('infrastructure_failure',reason='interrupted; resume same candidate')
+        if rt.rank==0:
+            # The final evaluation has already written the complete latest
+            # snapshot. A rename avoids a second full-checkpoint write.
+            if latest.exists():
+                os.replace(latest,final)
+            elif not final.exists():
+                raise RuntimeError('terminal checkpoint is missing')
+        return status('completed',loss=evaluations[-1]['val'],
+                      frozen_hash_final=tensor_hash(frozen),evaluations=evaluations)
+    except NumericalFailure as exc:
+        if rt.rank==0:
+            save_checkpoint(output/'failure.pt',snapshot())
+        return status('numerical_failure',field=str(exc),failure_step=step,
+                      T_diverge=processed,loss=None)
+    except Exception as exc:
+        # Do not overwrite the last known-good checkpoint with partial state.
+        if rt.rank==0:
+            write_json(output/'status.json',dict(status='infrastructure_failure',mode=mode,
+                       step=step,tokens=processed,run_id=identity,reason=repr(exc)))
+            publish_progress('infrastructure_failure')
+        raise
+    finally:
+        if profiling:
+            write_json(output/'performance.json',dict(
+                kind='CPU test' if mode=='test' else 'hardware smoke',
+                segment_start_step=segment_start,segment_end_step=step,
+                wall_seconds=time.monotonic()-started,timings=timings,
+                peak_allocated_bytes=torch.cuda.max_memory_allocated(rt.device)
+                    if rt.device.type=='cuda' else None,
+                timing_note='Synchronized smoke timings; features include training and evaluation, forward includes features.'))
+        if telemetry is not None: telemetry.close()
+        for array in arrays.values():
+            array._mmap.close()
+        for sig,handler in old_handlers.items():
+            signal.signal(sig,handler)
