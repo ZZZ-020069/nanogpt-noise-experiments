@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "design_id": "LH-QP-20261114-draft2",
+  "status": "design_draft_not_implemented",
+  "repository": "ZZZ-020069/nanogpt-noise-experiments",
+  "branch": "design/lm-head-only-20261114",
+  "base_commit": "bb3cf72e1113d0e9ceb903515772bfb1d1161df9",
+  "release_directory": "docs/experiments/lm-head-only/20261114-draft2",
+  "source": {
+    "role": "sole_editing_authority",
+    "workspace_relative_path": "VSCode下载/New/nanogpt_experiment_design.md",
+    "section": "14",
+    "file_sha256": "1fb071be3fbf00e99e44b703902fb0e696e3162892ab51961ec18fb9f3d6ccc3",
+    "section_sha256_utf8_lf": "45310c040319198efa41b1d71f4ed8c7c74fa1463e2c9ca00fe0564eee8e6b41"
+  },
+  "preserved_baseline_files": {
+    "docs/nanogpt_experiment_design.md": {
+      "git_blob": "334a1a46908dae841b515a57d21f432f4bcc9d0c",
+      "sha256": "37b7f25a71e7c230bb5c95b8b48fcfdebff69e54eb4bcd957549a5e5f2213cf7"
+    },
+    "RUN_TASK.md": {
+      "git_blob": "5caa76b2882edbd47b41dde646690b344ffa1d5b",
+      "sha256": "756a24050ab0f96a6440e5646e7db3753ff7c64441a40224b00703410779470d"
+    },
+    "README.md": {
+      "git_blob": "8dd402817d0100aa823a9e2c7fc779a6e850829a",
+      "sha256": "d205fcd8cf561e4ac5016bb42221cd4c086a1ae1ac1ca24d76140218abf1c304"
+    }
+  },
+  "files": {
+    "README.md": {
+      "sha256": "c4e4b3ff0e34295e84eea8f3c15ed0aac8661cc6129c0e8cb8f59dd6d7f2e003",
+      "bytes": 2740
+    },
+    "EXPERIMENT_DESIGN.md": {
+      "sha256": "f6d2bf3014dc0b8361b060b3af083280cda43a28fd568f680c2a9d9fff99ce70",
+      "bytes": 48327
+    }
+  },
+  "scope": {
+    "documentation_only": true,
+    "changes_default_branch": false,
+    "changes_training_code": false,
+    "launches_training": false,
+    "independent_experiment_identity": "lm_head_only / LH-QP"
+  },
+  "publication_note": "Commit identifier is supplied by Git; this manifest omits its own hash to avoid circular checksums.",
+  "checksum_convention": "Published file hashes and preserved baseline hashes refer to canonical Git blob bytes; the source section hash uses UTF-8 LF."
+}
