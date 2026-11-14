@@ -20,7 +20,7 @@ class HeadShell(unittest.TestCase):
             stub.chmod(0o755)
             env={**os.environ,'PYTHON':stub.as_posix(),'INPUT_ROOT':'/inputs with spaces',
                  'LH_RUN_ROOT':'/new outputs','OBJECTIVE':'G','GPUS':'4,6',
-                 'MICRO_BATCH':'4','LH_CURVATURE_DIR':'/curvature output',**overrides}
+                 'MICRO_BATCH':'','LH_CURVATURE_DIR':'/curvature output',**overrides}
             return subprocess.run([BASH,'scripts/run_lm_head.sh',action],env=env,
                 cwd=Path(__file__).resolve().parents[1],capture_output=True,text=True,encoding='utf-8')
 
@@ -57,3 +57,14 @@ class HeadShell(unittest.TestCase):
         self.assertEqual(later.returncode,0,later.stderr)
         self.assertIn('ARG=<--blocks>\nARG=<2>',later.stdout)
         self.assertIn('ARG=<--fit-dir>\nARG=</fit>',later.stdout)
+
+    def test_micro_default_and_explicit_32_across_launch_actions(self):
+        for action,extra in (
+                ('check',{}),('smoke',{}),('clean',{}),('grid',{}),('plan',{}),
+                ('resume',{'LH_PHASE':'clean'}),('curvature-fit',{}),
+                ('curvature-check',{'LH_FIT_DIR':'/fit'})):
+            for value,expected in (('',16),('32',32)):
+                with self.subTest(action=action,micro=expected):
+                    result=self.invoke(action,MICRO_BATCH=value,**extra)
+                    self.assertEqual(result.returncode,0,result.stderr)
+                    self.assertIn(f'ARG=<--micro-batch>\nARG=<{expected}>',result.stdout)

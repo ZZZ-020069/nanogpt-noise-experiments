@@ -14,7 +14,7 @@ export PYTHON=python
 export INPUT_ROOT=/absolute/path/to/registered-input-bundle
 export LH_RUN_ROOT=/absolute/path/to/new-lm-head-results
 export GPUS=0,1,2,3
-export MICRO_BATCH=4
+export MICRO_BATCH=16
 export OBJECTIVE=G
 bash scripts/run_lm_head.sh check
 bash scripts/run_lm_head.sh plan
@@ -22,11 +22,40 @@ bash scripts/run_lm_head.sh plan
 
 INPUT_ROOT 必须包含现有、已登记的 openwebtext_subset/、frozen-artifacts/、registration.json 和 SHA256SUMS。直接读取之前的冻结输入，不重新生成初始化或训练窗口。输出目录必须是输入树之外的全新目录，不能使用 last1 输出。
 
-check 验证哈希与输入协议；plan 只打印任务，不访问 GPU、不创建产物。正式执行时每张卡处理一个候选，八个 LR 候选顺序推进。代码身份、输入或 micro batch 改变会拒绝续跑；不要在运行期间更新 checkout。
+check 验证哈希、输入协议和根目录 micro；plan 只打印任务、micro、累积次数及固定预算，不访问 GPU、不创建产物。正式执行时每张卡处理一个候选，八个 LR 候选顺序推进。
+
+默认 micro=16；可用 MICRO_BATCH=32 或 CLI 的 --micro-batch 32 覆盖。全局 batch 始终为 512 条长 1024 的序列：16 对应每步累积 32 次，32 对应 16 次，均为每步 524288 tokens、每候选 3815 步。噪声仍在全部累积结束后注入一次。
+
+G/T/K 在同一个 LH_RUN_ROOT 中锁定同一个 micro；smoke、clean、grid 和恢复都受检查。report 会逐候选验证 micro，并在 CSV 记录该值。旧根登记缺少 micro 时拒绝自动迁移；改变 micro、代码或输入必须使用全新目录。已运行的实验继续用原冻结 checkout，不在运行期间更新代码。
+
+### H100 选档：分别测 16 和 32
+
+默认 16 尚未经过 H100 验收。正式开始前，在两个独立临时根目录完成 G/T/K 各四优化器的 32 步 smoke。每个目标分别执行，先查看退出状态与性能记录再继续：
+
+~~~bash
+export LH_RUN_ROOT=/absolute/path/to/temporary-smoke/micro-16
+export MICRO_BATCH=16
+OBJECTIVE=G bash scripts/run_lm_head.sh smoke
+OBJECTIVE=T bash scripts/run_lm_head.sh smoke
+# K_STATISTICS 必须是当前代码、输入下已通过第 3 节几何验收的产物
+export K_STATISTICS=/absolute/path/to/approved/K-approved.pt
+OBJECTIVE=K bash scripts/run_lm_head.sh smoke
+~~~
+
+随后换成另一个新目录及 MICRO_BATCH=32，重复三个目标。已有 K 产物可以用于两个独立目录的吞吐测量；这些测速结果不进入正式配对排名。若 K 还未通过几何验收，先保留 G/T 的测速记录并标明“K 未测”，不要伪造 K 通过标记，也不要宣布三目标定档完成。
+
+比较每个 smoke 目录中的 performance.json：wall_seconds、各分项时间和 peak_allocated_bytes。必须检查 T 和 K，不能只凭 G 的表现选 32。T 会同时保留多份完整词表中间张量，micro 增大可能显著增加显存；本版保持 T/K 算子不变，K 的固定二次项仍在每个 micro-batch 中计算。具体吞吐、显存余量和工期以实测为准。
+
+若某档 OOM，保留失败记录，在其他新目录测试较小档位；不在同一目录改 micro 接着跑。三目标均通过后选定共同档位，按第 2 节在全新正式根目录重新生成各目标的 smoke 凭证。临时结果不复制为正式凭证，脚本不自动选档、降档或清理目录。
 
 ## 2. 先验收，再启动 G clean
 
+完成选档后设置正式 LH_RUN_ROOT 和共同 MICRO_BATCH。下面以已选定 16 为例；若实测选择 32，只在新正式目录首次绑定前设置为 32：
+
 ~~~bash
+export LH_RUN_ROOT=/absolute/path/to/new-formal-lm-head-results
+export MICRO_BATCH=16
+export OBJECTIVE=G
 bash scripts/run_lm_head.sh smoke
 bash scripts/run_lm_head.sh clean
 ~~~
@@ -59,6 +88,8 @@ bash scripts/run_lm_head.sh curvature-check
 ~~~
 
 每种布局默认五块：128×32、512×8，子块均为 4096×4096。数据前缀为 8192→32768 tokens；统计累积、子块和分解用 FP64，概率始终覆盖完整词表。参数采样只用于测量，训练参数始终是完整 Head。测量还保存梯度奇异值、固定 batch 波动、Taylor 误差、校正谱矩和 K 近似误差。
+
+离线入口也默认 micro=16，接收相同 MICRO_BATCH，记录在自身的曲率身份中。正式分析沿用选定的共同 micro；不要用不同 micro 的计算结果宣称逐位相同。200 条固定评估序列在 16/32 下均有 8 条尾块，评价和梯度统计按实际样本数加权。tiny CPU 测试须显式传入 --micro-batch 2 或 4。
 
 拟合阶段使用训练步骤 0–15 的完整 batch 检查平均梯度；留出阶段用固定 train/val 评估池复核零空间兼容性。这些离线计算有额外成本。拟合或留出检查失败时退出码为 3，报告仍保留。失败不能通过更改阈值或挑块绕过。
 
@@ -93,7 +124,7 @@ grid 包含 35 个节点；同身份完成的 clean 直接复用。T、K 分别�
 
 | 路径 | 内容 |
 |---|---|
-| lm_head_run.json | 输出根目录的输入、代码与实验身份 |
+| lm_head_run.json | 输出根目录的输入、代码、micro 与实验身份 |
 | smoke/G/passed.json | 四优化器硬件验收记录；T、K 各自独立 |
 | G/jobs/job_0000/ | 一个节点、一个优化器的八候选及 search.json |
 | candidate_*/ | metadata、终态、评估曲线、压缩逐步日志 |

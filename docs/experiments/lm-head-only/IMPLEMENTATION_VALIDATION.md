@@ -12,7 +12,30 @@
 
 原 v1.8 源码、脚本、配置、RUN_TASK.md 与设计快照保持不变。新增功能集中在 nanogpt_noise/lm_head/，运行目录不接受旧 last1 checkpoint。
 
-## 本地检查
+## micro batch 调整的检查
+
+根据用户提供的 micro_batch_adjustment_guide.md，将所有 LM Head 入口默认 micro 改为 16，并新增运行根目录及跨目标报告的一致性校验。主设计登记在第 14.17 节，发布快照见 [IMPLEMENTATION_RECORD.md](IMPLEMENTATION_RECORD.md)。T/K 算子、梯度累积与噪声注入位置未改。
+
+**最终完整回归：154 项，147 通过、7 项 POSIX 检查跳过，314.299 秒，退出码 0。** 结构化记录及日志哈希见 [micro-batch-validation.json](micro-batch-validation.json)。
+
+新增 8 项 Python 检查和 1 项 Bash 路由检查已通过，覆盖：
+
+- 训练、队列、根登记、CLI、离线测量与脚本默认值，以及显式 micro=32；
+- 512 条全局 batch、16/32 对应的累积次数、524288 tokens/step 和 3815 步；
+- G/T/K 混用 micro、旧登记缺少 micro、无效 micro 和改变 micro 续训时的拒绝行为；
+- 报告核对全部候选，包括未获胜的候选；拒绝后不写入新的比较结果；
+- 200 条评估序列的实际尾块加权，以及固定 16 个完整 batch 的梯度诊断；
+- micro=16/32 的冻结特征和 Hessian 主子块数值对照，含非满分块。
+
+首次全量回归共 154 项：146 通过、7 项 POSIX 检查跳过、1 项原有并发顺序断言失败，用时 330.617 秒。失败项为 test_idle_gpu_runs_later_rows_while_first_row_is_blocked：最后完成行为 25，而断言要求为 0。该测试、旧 pool.py 和 progress.py 均未修改。测试只在第 34 行完成时释放第 0 行，不能保证其余行此前都完成，因而该断言依赖线程时序。
+
+同一失败项独立连续复跑 10 次均通过，耗时 0.091 秒。首次失败与复跑结果均保留，未改旧调度逻辑来制造通过结果。
+
+随后在代码不变的条件下重新执行完整 unittest discovery，得到上面的最终通过结果。运行时将 Git Bash 放在 PATH 首位，使用可正常执行原子替换的工作区临时目录；这轮 Bash 测试没有使用 Windows Apps 占位入口。
+
+H100 上 micro=16/32 的 G/T/K 共同选档尚未执行；本地 CPU 与脚本 stub 只验证实现，不证明显存足够或吞吐提升。
+
+## 初次实现的本地检查
 
 环境：Windows，Python 3.11，PyTorch 2.9.1+cpu、NumPy 2.1.3、Git Bash。合计 **138 项通过，7 项 Linux/POSIX 专属检查跳过**，按不同测试项去重计数。
 

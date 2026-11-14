@@ -6,7 +6,7 @@ from pathlib import Path
 from ..artifacts import read_json,write_json,atomic,file_hash
 from ..search import TOL,winner
 from ..protocol import SIGMA1,SIGMA2
-from .protocol import CENTERS,VERSION
+from .protocol import CENTERS,VERSION,bound_micro
 
 
 def ranking(scores):
@@ -35,6 +35,7 @@ def report(root):
     identity=read_json(root/'lm_head_run.json')
     if identity['scope']!='lm_head_only':
         raise ValueError('not a Head-only result tree')
+    micro=bound_micro(identity)
     jobs={}
     sources={}
     rows=[]
@@ -52,6 +53,8 @@ def report(root):
                 status=read_json(status_path)
                 metadata=read_json(status_path.parent/'metadata.json')
                 execution=metadata['execution']
+                if type(execution.get('micro')) is not int or execution['micro']!=micro:
+                    raise ValueError(f'candidate micro differs from run root: {status_path.parent}')
                 if (execution['artifact_id']!=identity['input_id']
                         or execution['code']!=identity['code']
                         or execution['config']['objective']!=objective
@@ -66,7 +69,7 @@ def report(root):
                 raise ValueError('stored CE winner disagrees with candidate scores')
             auxiliary=winner([{**s,'loss':s.get('train_objective')} for s in scores])
             result=value['winner']
-            item=dict(objective=objective,node=job['node'],optimizer=job['optimizer'],
+            item=dict(objective=objective,node=job['node'],optimizer=job['optimizer'],micro=micro,
                       sigma1=SIGMA1[job['node']//7],sigma2=SIGMA2[job['node']%7],
                       status='completed' if result else 'all_numerical_failure',
                       ce=result['loss'] if result else None,lr=result['lr'] if result else None,

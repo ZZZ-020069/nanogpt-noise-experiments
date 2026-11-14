@@ -22,7 +22,7 @@ from ..artifacts import (read_json,write_json,save_checkpoint,tensor_hash,digest
 from ..data import batch,verify
 from ..model import Shape
 from ..noise import inject,norm,ratio
-from .protocol import Budget, configuration, CENTERS, require_current_input, code_identity, candidate_identity
+from .protocol import Budget, configuration, CENTERS, require_current_input, code_identity, candidate_identity, DEFAULT_MICRO
 from ..input_bundle import verify_bundle
 from ..artifacts import file_hash
 
@@ -112,7 +112,7 @@ def evaluate(model, arrays, indices, budget, micro, rt):
     return losses
 
 
-def run(config, data, artifacts, output, *, micro=4, runtime=None,
+def run(config, data, artifacts, output, *, micro=DEFAULT_MICRO, runtime=None,
         smoke_steps=None, test=False, pause_after=None, pause_file=None):
     rt = runtime or Runtime(cpu=test)
     if config.get('statistics') and config['objective'] != 'K':

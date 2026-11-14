@@ -9,7 +9,7 @@ from .runner import (input_identity,bind_root,job_list,smoke,serve,worker,
 from .measure import measure
 from .measure import load_statistics
 from ..model import Shape
-from .protocol import Budget
+from .protocol import Budget, DEFAULT_MICRO
 from .analyze import report as comparison_report
 
 
@@ -22,7 +22,7 @@ def main(argv=None):
         p.add_argument('--run-root',required=True)
         p.add_argument('--objective',choices=('G','T','K'),default='G')
         p.add_argument('--statistics')
-        p.add_argument('--micro-batch',type=int,default=4)
+        p.add_argument('--micro-batch',type=int,default=DEFAULT_MICRO)
         p.add_argument('--test',action='store_true',help='CPU synthetic fixtures only, never formal output')
         if name=='run':
             p.add_argument('--phase',choices=('clean','grid'),default='clean')
@@ -45,11 +45,13 @@ def main(argv=None):
     p.add_argument('--tokens',type=int,default=32768)
     p.add_argument('--blocks',type=int)
     p.add_argument('--chunk-tokens',type=int,default=64)
-    p.add_argument('--micro-batch',type=int,default=4)
+    p.add_argument('--micro-batch',type=int,default=DEFAULT_MICRO)
     p.add_argument('--test',action='store_true')
     args=parser.parse_args(argv)
     if args.command=='run' and args.dry_run:
         print(json.dumps(dict(objective=args.objective,phase=args.phase,
+                              micro=args.micro_batch,accumulations=Budget().accumulations(1,args.micro_batch),
+                              step_tokens=Budget().step_tokens,steps=Budget().steps,
                               candidates_per_job=8,jobs=job_list(args.phase)),indent=2))
         return 0
     if args.command in ('pause','status','report'):
@@ -82,9 +84,11 @@ def main(argv=None):
     Budget(**ident['budget']).accumulations(1,args.micro_batch)
     if args.statistics:
         load_statistics(args.statistics,ident,Shape(**ident['shape']),allow_test=args.test)
-    bind_root(args.run_root,args.input_root,ident,args.test)
+    bind_root(args.run_root,args.input_root,ident,args.test,micro=args.micro_batch)
     if args.command=='check':
         print(json.dumps(dict(input_id=ident['id'],design='LH-QP-20261114-draft2',
+                              micro=args.micro_batch,
+                              accumulations=Budget(**ident['budget']).accumulations(1,args.micro_batch),
                               status='inputs_verified'),indent=2));return 0
     if args.command=='smoke':
         print(json.dumps(smoke(args,ident),indent=2));return 0

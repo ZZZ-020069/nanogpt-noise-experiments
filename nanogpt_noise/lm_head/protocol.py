@@ -6,9 +6,17 @@ from ..artifacts import digest, file_hash, code_identity as base_code
 VERSION = 'LH-QP-20261114-draft2'
 SCOPE = 'lm_head_only'
 OBJECTIVES = ('G', 'T', 'K')
+DEFAULT_MICRO = 16
 CENTERS = baseline.CENTERS
 Budget = baseline.Budget
 require_current_input = baseline.require_current_input
+
+
+def bound_micro(identity):
+    value = identity.get('micro')
+    if type(value) is not int or value < 1:
+        raise ValueError('run identity requires a valid micro; use a fresh root, never migrate old outputs')
+    return value
 
 
 def configuration(objective, optimizer, node, exponent):

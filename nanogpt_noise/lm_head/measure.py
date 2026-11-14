@@ -11,7 +11,7 @@ from ..data import verify, batch
 from ..input_bundle import verify_bundle
 from ..model import Shape
 from .model import HeadGPT
-from .protocol import VERSION, Budget, code_identity, require_current_input
+from .protocol import VERSION, Budget, code_identity, require_current_input, DEFAULT_MICRO
 from .curvature import (probabilities, gradient, trace, hessian_block,
                         statistics_block, sample_blocks, block_metrics,
                         inclusion_moments)
@@ -67,7 +67,7 @@ def _statistics(b, pbar, t, n):
 
 
 def measure(input_root, output, mode='fit', *, tokens=32768, count=None,
-            fit_dir=None, checkpoint=None, chunk_tokens=64, micro=4, test=False):
+            fit_dir=None, checkpoint=None, chunk_tokens=64, micro=DEFAULT_MICRO, test=False):
     started = time.monotonic()
     count = (2 if checkpoint else 5) if count is None else count
     root, output = Path(input_root).resolve(), Path(output).resolve()
@@ -87,6 +87,7 @@ def measure(input_root, output, mode='fit', *, tokens=32768, count=None,
     if mode == 'check' and (not fit_dir or count != (2 if checkpoint else 5)):
         raise ValueError('held-out check requires a frozen fit and the prescribed block count')
     budget, shape = Budget(**ident['budget']), Shape(**ident['shape'])
+    budget.accumulations(1,micro)
     if tokens % budget.sequence or tokens <= 0 or chunk_tokens < 1 or micro < 1:
         raise ValueError('probe tokens must be a positive multiple of sequence length')
     rt = Runtime(cpu=test)

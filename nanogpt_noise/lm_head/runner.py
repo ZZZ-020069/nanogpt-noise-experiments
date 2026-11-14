@@ -16,7 +16,8 @@ from ..input_bundle import verify_bundle
 from ..pool import run_pool
 from ..search import propose, summarize, winner
 from ..storage import compact_steps, retain_winner_checkpoint
-from .protocol import configuration, VERSION, CENTERS, code_identity, require_current_input
+from .protocol import (configuration, VERSION, CENTERS, code_identity, require_current_input,
+                       DEFAULT_MICRO, Budget, bound_micro)
 from .train import run, Runtime
 
 
@@ -31,22 +32,31 @@ def input_identity(root, test=False):
     return identity
 
 
-def bind_root(root, input_root, ident, test=False):
+def require_run_micro(root, micro):
+    identity = read_json(Path(root)/'lm_head_run.json')
+    if bound_micro(identity) != micro:
+        raise ValueError('micro differs from the locked run root; G/T/K must use one micro')
+    return identity
+
+
+def bind_root(root, input_root, ident, test=False, *, micro=DEFAULT_MICRO):
+    bound_micro(dict(micro=micro))
+    Budget(**ident['budget']).accumulations(1,micro)
     root, inputs = Path(root).resolve(), Path(input_root).resolve()
     if root == inputs or inputs in root.parents or root in inputs.parents:
         raise ValueError('run output and read-only inputs must be separate trees')
     expected = dict(design=VERSION, scope='lm_head_only', input_id=ident['id'],
-                    code=code_identity()['sha256'], test=test)
+                    code=code_identity()['sha256'], test=test, micro=micro)
     path = root/'lm_head_run.json'
     # Workers only read an already committed immutable registration.
     if path.exists():
-        if read_json(path) != expected:
+        if require_run_micro(root,micro) != expected:
             raise ValueError('run root identity mismatch; do not reuse legacy or changed-code outputs')
         return expected
     with lock(root):
         path = root/'lm_head_run.json'
         if path.exists():
-            if read_json(path) != expected:
+            if require_run_micro(root,micro) != expected:
                 raise ValueError('run root identity mismatch; do not reuse legacy or changed-code outputs')
         else:
             if any(p.name not in ('.lease', '.lock') for p in root.iterdir()):
@@ -61,9 +71,10 @@ def job_list(phase):
             for n in nodes for i,o in enumerate(CENTERS)]
 
 
-def run_node(job, input_root, run_root, objective, *, micro=4, statistics=None,
+def run_node(job, input_root, run_root, objective, *, micro=DEFAULT_MICRO, statistics=None,
              test=False, runtime=None):
     root, inputs = Path(run_root), Path(input_root)
+    require_run_micro(root,micro)
     output = root/objective/'jobs'/f"job_{job['index']:04d}"
     rt = runtime or Runtime(cpu=test)
     with lock(output):
@@ -119,6 +130,7 @@ def smoke_identity(ident, objective, micro, statistics, test):
 
 
 def smoke(args, ident):
+    require_run_micro(args.run_root,args.micro_batch)
     rt = Runtime(cpu=args.test)
     records = []
     for optimizer in CENTERS:
@@ -153,6 +165,7 @@ def collect(root, objective):
 
 
 def serve(args):
+    require_run_micro(args.run_root,args.micro_batch)
     root = Path(args.run_root)
     pause = root/'pause.request'
     devices = [d.strip() for d in args.devices.split(',') if d.strip()]

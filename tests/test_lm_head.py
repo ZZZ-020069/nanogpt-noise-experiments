@@ -200,7 +200,7 @@ class Workflow(unittest.TestCase):
         from nanogpt_noise.lm_head.measure import measure,load_statistics
         output=self.root/'curvature'
         with contextlib.redirect_stdout(io.StringIO()):
-            result=measure(self.inputs,output,tokens=256,chunk_tokens=32,test=True)
+            result=measure(self.inputs,output,tokens=256,chunk_tokens=32,micro=2,test=True)
         self.assertEqual(len(result['blocks']),10)
         self.assertEqual(result['taylor']['displacement'],0.)
         self.assertLess(result['taylor']['absolute_gradient_error'],1e-12)
@@ -209,12 +209,12 @@ class Workflow(unittest.TestCase):
         with self.assertRaises(ValueError):
             load_statistics(output/'fit.pt',ident,Shape(**ident['shape']),allow_test=True)
         with self.assertRaises(ValueError):
-            measure(self.inputs,self.inputs/'bad',tokens=256,test=True)
+            measure(self.inputs,self.inputs/'bad',tokens=256,micro=2,test=True)
         with self.assertRaises(ValueError):
-            measure(self.inputs,output,tokens=128,test=True)
+            measure(self.inputs,output,tokens=128,micro=2,test=True)
         if not result['passed']:
             with self.assertRaises(ValueError),contextlib.redirect_stdout(io.StringIO()):
-                measure(self.inputs,self.root/'check',mode='check',fit_dir=output,tokens=256,test=True)
+                measure(self.inputs,self.root/'check',mode='check',fit_dir=output,tokens=256,micro=2,test=True)
             self.assertFalse((self.root/'check'/'K-approved.pt').exists())
 
     def test_input_and_output_gates_and_readonly_plan(self):
@@ -228,16 +228,16 @@ class Workflow(unittest.TestCase):
             self.assertEqual(main(['run','--input-root',str(self.root/'absent'),
                 '--run-root',str(runroot),'--dry-run']),0)
         self.assertFalse(runroot.exists())
-        expected=bind_root(runroot,self.inputs,ident,True)
-        self.assertEqual(bind_root(runroot,self.inputs,ident,True),expected)
+        expected=bind_root(runroot,self.inputs,ident,True,micro=2)
+        self.assertEqual(bind_root(runroot,self.inputs,ident,True,micro=2),expected)
         with self.assertRaises(ValueError):
-            bind_root(self.inputs/'bad',self.inputs,ident,True)
+            bind_root(self.inputs/'bad',self.inputs,ident,True,micro=2)
         legacy=self.root/'legacy';legacy.mkdir();(legacy/'old.txt').write_text('preserve')
-        with self.assertRaises(ValueError):bind_root(legacy,self.inputs,ident,True)
+        with self.assertRaises(ValueError):bind_root(legacy,self.inputs,ident,True,micro=2)
         with self.assertRaises(ValueError):input_identity(self.inputs,False)
         from nanogpt_noise.artifacts import write_json
         write_json(runroot/'lm_head_run.json',{**expected,'code':'changed'})
-        with self.assertRaises(ValueError):bind_root(runroot,self.inputs,ident,True)
+        with self.assertRaises(ValueError):bind_root(runroot,self.inputs,ident,True,micro=2)
 
     def test_checkpoint_drift_uses_initial_block_prefix_and_never_approves_k(self):
         from nanogpt_noise.lm_head.measure import measure
@@ -246,9 +246,9 @@ class Workflow(unittest.TestCase):
             self.inputs/'frozen-artifacts',candidate,micro=2,test=True)
         with contextlib.redirect_stdout(io.StringIO()):
             fitted=measure(self.inputs,self.root/'drift-fit',checkpoint=candidate/'final.pt',
-                           tokens=64,test=True)
+                           tokens=64,micro=2,test=True)
             checked=measure(self.inputs,self.root/'drift-check','check',fit_dir=self.root/'drift-fit',
-                            checkpoint=candidate/'final.pt',tokens=64,test=True)
+                            checkpoint=candidate/'final.pt',tokens=64,micro=2,test=True)
         self.assertEqual(len(fitted['blocks']),4)
         self.assertEqual(len(checked['blocks']),4)
         self.assertEqual(checked['purpose'],'trajectory_drift')
@@ -268,7 +268,7 @@ class Workflow(unittest.TestCase):
         output=self.root/'runs'
         args=SimpleNamespace(input_root=str(self.inputs),run_root=str(output),objective='G',
             statistics=None,test=True,micro_batch=2,devices='0,1',phase='clean',resume=False)
-        ident=input_identity(self.inputs,True);bind_root(output,self.inputs,ident,True)
+        ident=input_identity(self.inputs,True);bind_root(output,self.inputs,ident,True,micro=2)
         smoke(args,ident)
         write_json(output/'pause.request',dict(reason='test'))
         with self.assertRaises(RuntimeError):serve(args)
