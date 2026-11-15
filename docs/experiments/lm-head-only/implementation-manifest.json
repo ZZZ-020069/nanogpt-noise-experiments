@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "design": "LH-QP-20261114-draft2",
-  "status": "legacy_hardware_benchmark_ready",
+  "status": "rtx_legacy_hardware_selection_completed_h100_pending",
   "branch": "design/lm-head-only-20261114",
   "base_commit": "bb3cf72e1113d0e9ceb903515772bfb1d1161df9",
   "source": {
     "workspace_relative_path": "VSCode下载/New/nanogpt_experiment_design.md",
-    "section": "14.16–14.19",
-    "sha256": "67c4c6d412cf7f480571898ef702d24448be7afe8598a234a5380b9949cd54c3"
+    "section": "14.16–14.20",
+    "sha256": "1b8f335de7465ec74c19242e808eeccfc8ab2602e09a80b8ca791836aa78ef1f"
   },
   "code": {
     "sha256": "96a26c198b744c0de2fcff34855ae33865c6a6f67e046aacbc101cfa64ae4b7c",
@@ -69,8 +69,8 @@
       "bytes": 5978
     },
     "LM_HEAD_RUN.md": {
-      "sha256": "0b86f4e31fa50311ae40e164f248834c35d785aa541fa6f81f88bdc65ddb2738",
-      "bytes": 12637
+      "sha256": "c0641247aa74975ccd3d6fc1e6f961b8765864da5bf5a813e94854af64dd3b7c",
+      "bytes": 12956
     },
     "nanogpt_noise/lm_head/__init__.py": {
       "sha256": "8302238bf9f0bdcd19d7c1835c81124b44710e61832451cd73645b7e4d386313",
@@ -113,8 +113,8 @@
       "bytes": 23008
     },
     "README.md": {
-      "sha256": "97d09fbb820db1aff95b06d637e863397563ee3a217db27fa00af6ef237aba7c",
-      "bytes": 4244
+      "sha256": "c13869f166443ed749cd11e7e694f29bf1d37a47b11bd4feac764339ade54e5d",
+      "bytes": 4381
     },
     "scripts/run_lm_head.sh": {
       "sha256": "a340decbab47a5b4faecc59f10d068ead73480a455164cc2ed05134e38299922",
@@ -141,8 +141,8 @@
       "bytes": 1333
     },
     "docs/experiments/lm-head-only/.gitattributes": {
-      "sha256": "a42761859ba47d51fbed559baca841edb461cd165c1c40d7043b93aae32c3c57",
-      "bytes": 196
+      "sha256": "9e798a420d17a0d658075857cd4a97a62cebaa7c498c13b833f20a733ec81768",
+      "bytes": 235
     },
     "scripts/select_lm_head_micro.py": {
       "sha256": "7a43f278521aefad99102dcf570d315f1093e6b62256794ea9d65f4ddeb73104",
@@ -157,8 +157,8 @@
       "bytes": 9181
     },
     "docs/experiments/lm-head-only/RTX_SELECTION_RECORD.md": {
-      "sha256": "075dfde101926bbdbd375a4ffdcefde01749e2fc53086056c3236d92f167c0e1",
-      "bytes": 4815
+      "sha256": "72c00768b90a0c69a0536a025001c61dfb86b86bcb5d47486a9690bd8151eb19",
+      "bytes": 7077
     },
     "docs/superpowers/plans/2026-11-15-rtx-micro-selection.md": {
       "sha256": "dec49d01c667cbf6aa38d524759b0defce584963db8598161ee9f1e821cba62f",
@@ -185,12 +185,16 @@
       "bytes": 2155
     },
     "docs/superpowers/plans/2026-11-15-legacy-input-benchmark.md": {
-      "sha256": "994cd02de000b9be0a1a277e7f99f47ef92a57e5f1fc7596cd1655327ffea231",
-      "bytes": 1408
+      "sha256": "070f6bce60c576e1c445ec314baac427c60de16537eb57d6063d0941424f12bf",
+      "bytes": 1700
     },
     "docs/experiments/lm-head-only/legacy-benchmark-manifest.json": {
-      "sha256": "203fbcdc5281e5e532e5f27f4f6b320bd32e53c55cf662abcc340575fcef8e06",
-      "bytes": 5017
+      "sha256": "c3664416176cd6de4663e964f906f8588618671a776b2d369353483713dc80d5",
+      "bytes": 5672
+    },
+    "docs/experiments/lm-head-only/rtx-benchmark-result.json": {
+      "sha256": "4569538d7a97962dfbcd5d4634f3c5294cf50e9a4a49677f7f40338c2a19647a",
+      "bytes": 1661
     }
   },
   "runtime_revision": "micro-default-16-root-binding-20261114",
@@ -203,7 +207,10 @@
   "rtx_selection": {
     "manifest": "rtx-selection-manifest.json",
     "server_accessed": true,
-    "selection_started": false
+    "selection_started": true,
+    "selection_completed": true,
+    "selected_micro": 32,
+    "result": "rtx-benchmark-result.json"
   },
   "legacy_benchmark": "legacy-benchmark-manifest.json"
 }

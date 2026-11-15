@@ -9,3 +9,5 @@ User authorized old data for throughput only. Implement inline in the isolated b
 - Publish a new fixed version, deploy separately, recheck GPU status, compute real empirical K statistics, and run both 12-candidate lanes. Preserve previous deployment and inputs. Inspect the actual outputs through completion and report any failures honestly.
 
 Files: nanogpt_noise/lm_head/benchmark.py, train.py, scripts/benchmark_lm_head.py, select_lm_head_micro.py, tests/test_lm_head_benchmark.py, LM_HEAD_RUN.md and implementation records. Main design section 14.19 is the authority for this scoped exception.
+
+Completed: version 74af8db deployed; 39 distinct local checks and 14 remote CPU-only checks passed; 24 real GPU benchmark candidates passed in 1198.019 seconds. Selection=32, ~0.99% lower summed candidate wall time. Evidence and independent frozen-parameter audit saved. No formal training.
