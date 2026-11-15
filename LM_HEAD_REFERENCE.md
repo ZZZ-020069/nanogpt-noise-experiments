@@ -1,6 +1,6 @@
 # LM Head 操作参考
 
-首次运行请按[操作手册](LM_HEAD_RUN.md)逐步执行。本页补充查询信息，所有命令仍需先执行手册中的共同三行。
+首次运行请按[操作手册](LM_HEAD_RUN.md)逐步执行。本页补充查询信息；每个命令块均已包含目录切换和环境加载，可整块复制。先按相应说明确认采样规模和 checkpoint 路径。
 
 ## SwanLab 看哪些指标
 
@@ -44,6 +44,10 @@
 例如从 32768 扩为 65536，每布局仍用 5 块：
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
+unset LH_CHECKPOINT
 LH_TOKENS=65536 LH_BLOCKS=5 \
 LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/init-fit-64k \
 bash scripts/run_lm_head_h100.sh curvature-fit
@@ -56,6 +60,10 @@ bash scripts/run_lm_head_h100.sh curvature-fit
 例如最终采用 65536 tokens、5 块的拟合并已通过，留出命令为：
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
+unset LH_CHECKPOINT
 LH_TOKENS=65536 LH_BLOCKS=5 \
 LH_FIT_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/init-fit-64k \
 LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/init-check-64k \
@@ -71,6 +79,9 @@ bash scripts/run_lm_head_h100.sh curvature-check
 先从对应 `search.json` 找到赢家 candidate，在平台任务环境设置 `LH_CHECKPOINT` 为该赢家的 `analysis/head-000191.pt`（其他时点相应替换，终点也可用赢家 `final.pt`）。在任务中执行：
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
 : "${LH_CHECKPOINT:?设置为实际 G clean 赢家的 Head 快照绝对路径}"
 LH_TOKENS=32768 LH_BLOCKS=2 \
 LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/drift-G-winner-step191-fit \
@@ -80,6 +91,10 @@ bash scripts/run_lm_head_h100.sh curvature-fit
 这里的 32768 应替换为初始化最终规模；每个优化器、时点和阶段都使用不同目录。拟合完成后，保持同一 `LH_CHECKPOINT`，执行：
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
+: "${LH_CHECKPOINT:?设置为与拟合相同的 G clean 赢家 Head 快照绝对路径}"
 LH_TOKENS=32768 LH_BLOCKS=2 \
 LH_FIT_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/drift-G-winner-step191-fit \
 LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/drift-G-winner-step191-check \

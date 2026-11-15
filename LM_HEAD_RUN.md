@@ -28,21 +28,18 @@ cp -n scripts/lm_head_h100.env.example /data/260010171/lm-head-h100-m16-v3.env
 | `GPUS` | 本次分配的 GPU 编号，四卡默认 `0,1,2,3` |
 | SwanLab | 保持 `NANOGPT_SWANLAB=1`；项目默认 `nanogpt-lm-head`，团队账号另填 `SWANLAB_WORKSPACE` |
 
-**以后每次提交平台任务，都先粘贴这三行，再接该步骤的命令：**
-
-```bash
-set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
-```
+**以下每个命令块都已包含目录切换和环境加载，可以整块复制到一个平台任务中。按顺序执行，通过该步骤的检查后，再复制下一块。**
 
 路径不同就统一替换文中的路径。已有 v3 checkout 可直接使用；已有任务继续原版本，运行中不更新代码。
 
 ## 2. 检查环境和输入
 
-接在共同三行之后执行；安装 SDK 只需一次，使用独立实验环境，勿升级旧任务正在使用的共享环境。
+整块复制执行。安装 SDK 只需一次，使用独立实验环境，勿升级旧任务正在使用的共享环境。
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
 "$PYTHON" -m pip install "swanlab==0.10.5"
 bash scripts/run_lm_head_h100.sh check
 bash scripts/run_lm_head_h100.sh plan
@@ -55,12 +52,18 @@ bash scripts/run_lm_head_h100.sh plan
 先做 smoke（四优化器各 32 步，依次使用第一张 GPU）：
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
 OBJECTIVE=G bash scripts/run_lm_head_h100.sh smoke
 ```
 
 **继续条件：**命令正常结束，`$LH_RUN_ROOT/smoke/G/passed.json` 的 `passed` 为 `true`；SwanLab 项目中四优化器均有数据，`progress/step` 到 32。两项都满足后，另开任务运行：
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
 OBJECTIVE=G bash scripts/run_lm_head_h100.sh formal
 ```
 
@@ -71,12 +74,18 @@ formal 执行零噪声 clean：四优化器各搜索 8 个学习率，共 32 条
 ## 4. 跑 T：重复相同验收流程
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
 OBJECTIVE=T bash scripts/run_lm_head_h100.sh smoke
 ```
 
 确认 `smoke/T/passed.json` 和 SwanLab 四优化器数据后，另开任务：
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
 OBJECTIVE=T bash scripts/run_lm_head_h100.sh formal
 ```
 
@@ -87,6 +96,9 @@ OBJECTIVE=T bash scripts/run_lm_head_h100.sh formal
 等待训练退出。先在初始化处测量并拟合，使用第一张 GPU：
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
 unset LH_CHECKPOINT
 LH_TOKENS=32768 LH_BLOCKS=5 \
 LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/init-fit-32k \
@@ -98,6 +110,10 @@ bash scripts/run_lm_head_h100.sh curvature-fit
 拟合通过后，用相同 token 数做独立留出验收：
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
+unset LH_CHECKPOINT
 LH_TOKENS=32768 LH_BLOCKS=5 \
 LH_FIT_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/init-fit-32k \
 LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/init-check-32k \
@@ -111,12 +127,18 @@ bash scripts/run_lm_head_h100.sh curvature-check
 ## 6. 跑 K：先短测，再正式训练
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
 OBJECTIVE=K bash scripts/run_lm_head_h100.sh smoke
 ```
 
 确认 `smoke/K/passed.json` 和 SwanLab 四优化器数据后，另开任务：
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
 OBJECTIVE=K bash scripts/run_lm_head_h100.sh formal
 ```
 
@@ -125,19 +147,45 @@ OBJECTIVE=K bash scripts/run_lm_head_h100.sh formal
 ## 7. 查看结果，再决定是否跑噪声网格
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
 bash scripts/run_lm_head_h100.sh status
 bash scripts/run_lm_head_h100.sh report
 ```
 
 看 `$LH_RUN_ROOT/comparison.csv`：每行是一项目标、一个噪声节点、一个优化器的搜索结果。clean 对应 `node=0`；G/T/K 均完成时有 12 行。主要比较终点 `ce`（越低越好），同时查看 `status`、`valid_candidates` 和 `boundary_unclosed`。**排序不一致或最优 LR 仍在边界时，先报告结果，不修改已完成实验。**
 
-先审查 clean。决定开展完整噪声网格后，另开任务执行，例如 G：
+先审查 clean。决定开展完整噪声网格后，按需要选择下面的目标；每块单独提交，前一个任务退出后再提交下一个。
+
+**G 噪声网格：**
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
 OBJECTIVE=G bash scripts/run_lm_head_h100.sh grid
 ```
 
-grid 每目标 35 节点 × 4 优化器 × 8 候选，复用同身份已完成的 clean；T/K 分别替换目标并顺序运行。grid 不会因 clean 完成而自动启动。
+**T 噪声网格：**
+
+```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
+OBJECTIVE=T bash scripts/run_lm_head_h100.sh grid
+```
+
+**K 噪声网格（正式 K 文件已配置，K smoke 已通过）：**
+
+```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
+OBJECTIVE=K bash scripts/run_lm_head_h100.sh grid
+```
+
+grid 每目标 35 节点 × 4 优化器 × 8 候选，复用同身份已完成的 clean。grid 不会因 clean 完成而自动启动。
 
 ## 中断与异常：按结果处理
 
@@ -151,12 +199,79 @@ grid 每目标 35 节点 × 4 优化器 × 8 候选，复用同身份已完成�
 | K 的数值、结构或零空间检查失败 | 保存 `report.json`，先审查原因；不放宽阈值、加 ridge 或修改梯度来强行通过 |
 | 退出码 75、平台中断或基础设施故障 | 等原控制器和 worker 全部退出，保持代码、输入、结果根与 micro 不变，按下方命令恢复 |
 
-恢复 G 的 clean（T/K 替换目标；原来跑 grid 就把 `LH_PHASE` 改为 `grid`）：
+## 断点续训：只复制对应的一块
+
+确认原控制器和所有 worker 已退出，并继续使用原代码、输入、结果目录和 micro。已完成候选自动跳过，被中断候选从最近检查点恢复；强制中断可能重算检查点后的步骤。K 恢复仍需原来匹配的 `K_STATISTICS`。
+
+### 恢复 clean 正式训练（原来执行 formal）
+
+**恢复 G clean：**
 
 ```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
 OBJECTIVE=G LH_PHASE=clean bash scripts/run_lm_head_h100.sh resume
 ```
 
-有交互终端可用 `bash scripts/run_lm_head_h100.sh pause` 请求保存暂停；平台直接停止后也用 resume。强制中断可能重算最近检查点后的步骤。smoke 中断则重跑该目标的 smoke；不要并开两个同根任务或手工删锁。
+**恢复 T clean：**
+
+```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
+OBJECTIVE=T LH_PHASE=clean bash scripts/run_lm_head_h100.sh resume
+```
+
+**恢复 K clean：**
+
+```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
+OBJECTIVE=K LH_PHASE=clean bash scripts/run_lm_head_h100.sh resume
+```
+
+### 恢复 完整噪声网格（原来执行 grid）
+
+**恢复 G grid：**
+
+```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
+OBJECTIVE=G LH_PHASE=grid bash scripts/run_lm_head_h100.sh resume
+```
+
+**恢复 T grid：**
+
+```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
+OBJECTIVE=T LH_PHASE=grid bash scripts/run_lm_head_h100.sh resume
+```
+
+**恢复 K grid：**
+
+```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
+OBJECTIVE=K LH_PHASE=grid bash scripts/run_lm_head_h100.sh resume
+```
+
+### 主动暂停与 smoke 中断
+
+有可用交互终端时，复制下面整块请求当前结果根的训练保存并暂停：
+
+```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
+source /data/260010171/lm-head-h100-m16-v3.env
+bash scripts/run_lm_head_h100.sh pause
+```
+
+平台直接停止任务后，也使用上面对应的 resume 命令。smoke 中断则重新复制第 3、4 或 6 步对应目标的完整 smoke 命令；曲率测量不使用训练 resume。不要并开两个同根任务或手工删锁。
 
 更多指标、文件位置、扩样和训练后曲率命令见[参考页](LM_HEAD_REFERENCE.md)。

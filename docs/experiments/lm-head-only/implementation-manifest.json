@@ -68,8 +68,8 @@
   "history": "history/README.md",
   "files": {
     "LM_HEAD_RUN.md": {
-      "sha256": "3a3304caa3b1f111ceda0ec5347a2a11eb6551e1dc5e9180877e78491b94e3ba",
-      "bytes": 7907
+      "sha256": "ff083db9996a87fa7fa2351c3c5b88b59d17a1b7281f925fb2f9c3afb03b284f",
+      "bytes": 11589
     },
     "README.md": {
       "sha256": "8d2c71305e657a007fe00189046ce7f50ed2a41f0b9cdb895edcf1a42d5dae38",
@@ -172,8 +172,8 @@
       "bytes": 5527
     },
     "LM_HEAD_REFERENCE.md": {
-      "sha256": "7ad20b43dd1ceb0e80c4b7f074b666d7efa2d6e4dab87cfad8f4095f4aa9cd10",
-      "bytes": 5964
+      "sha256": "88738f1e44b82b80e23ae0561ee19ef677e16e5ce8f0620540def4839c00bd0d",
+      "bytes": 6658
     }
   },
   "swanlab": {
@@ -186,10 +186,12 @@
     "cloud_acceptance": "verify_four_optimizer_smoke_metrics_in_dashboard"
   },
   "documentation_revision": {
-    "kind": "sequential_operator_manual",
+    "kind": "self_contained_operator_commands",
     "compatible_code_tag": "lm-head-h100-m16-20261115-v3",
     "entry": "LM_HEAD_RUN.md",
     "reference": "LM_HEAD_REFERENCE.md",
-    "training_code_changed": false
+    "training_code_changed": false,
+    "bash_blocks": 25,
+    "explicit_resume_variants": 6
   }
 }
