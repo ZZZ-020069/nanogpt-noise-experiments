@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "design": "LH-QP-20261114-draft2",
-  "status": "implemented_cpu_validated_gpu_pending",
+  "status": "implemented_cpu_validated_rtx_input_blocked",
   "branch": "design/lm-head-only-20261114",
   "base_commit": "bb3cf72e1113d0e9ceb903515772bfb1d1161df9",
   "source": {
     "workspace_relative_path": "VSCode下载/New/nanogpt_experiment_design.md",
-    "section": "14.16–14.17",
-    "sha256": "b3f2201b55e6aadd0f27d460f0aef785ba9c34cc47d338da0f690fbf049672c3"
+    "section": "14.16–14.18",
+    "sha256": "a60f210ff47b87267fdf01f7ec67ab1d5b038e846095262be09b309b99206fae"
   },
   "code": {
     "sha256": "b5244224a903fd65ec1c76f44f6ff0a4c50ea25a814b75cc27aab5921e51c480",
@@ -68,8 +68,8 @@
       "bytes": 5978
     },
     "LM_HEAD_RUN.md": {
-      "sha256": "65eb2c3735f49a7958224485fb4342d2de769452a4167376c9c5486091e27308",
-      "bytes": 9908
+      "sha256": "9b1f686e9d66f44ab8594013881a105b0f099e3530ec320ed7305259fb44b3d1",
+      "bytes": 11711
     },
     "nanogpt_noise/lm_head/__init__.py": {
       "sha256": "8302238bf9f0bdcd19d7c1835c81124b44710e61832451cd73645b7e4d386313",
@@ -112,8 +112,8 @@
       "bytes": 22243
     },
     "README.md": {
-      "sha256": "8fb09b095baa834443b82838855b84a2243b70553739a6fbcaf38b2da304d8cb",
-      "bytes": 3886
+      "sha256": "42b839114b70d88ca03bc110a0a557439008470bc2d233d72b1c96ccd036c010",
+      "bytes": 4159
     },
     "scripts/run_lm_head.sh": {
       "sha256": "a340decbab47a5b4faecc59f10d068ead73480a455164cc2ed05134e38299922",
@@ -140,8 +140,32 @@
       "bytes": 1333
     },
     "docs/experiments/lm-head-only/.gitattributes": {
-      "sha256": "bb0079d4ec969fdf3f46917b2e3ca8a43983865c748686b271fc14f092342641",
-      "bytes": 111
+      "sha256": "2c6bb07518cb4e84e4f36fa49661bd152aabe6f22469d3f206fd41e5a8008068",
+      "bytes": 152
+    },
+    "scripts/select_lm_head_micro.py": {
+      "sha256": "9d09249d48e8255cbd4f7261a23437b74f3293807555f4b871928398bff0dd7c",
+      "bytes": 15879
+    },
+    "scripts/select_lm_head_micro.sh": {
+      "sha256": "23a7f7c6050c6b1e4805730dabc5cf80fdefb66d552c9f46ef58474b1daa1b4d",
+      "bytes": 173
+    },
+    "tests/test_lm_head_selection.py": {
+      "sha256": "1ad686624b9732d3b2df471d50b59696ba988f5e69da2af2d1c706d24e3b4095",
+      "bytes": 7861
+    },
+    "docs/experiments/lm-head-only/RTX_SELECTION_RECORD.md": {
+      "sha256": "79c285420bae908e078e3ae61e87074c5c12d3ddf230a1b346e561bac2fec020",
+      "bytes": 3210
+    },
+    "docs/superpowers/plans/2026-11-15-rtx-micro-selection.md": {
+      "sha256": "f88c22d17ee7dbb1187ef84ee0b436270df281643b7a0d6799e5bd3ac98fbcc4",
+      "bytes": 4112
+    },
+    "docs/experiments/lm-head-only/rtx-selection-manifest.json": {
+      "sha256": "b9224379e5887a6ae8c5f3e984c46af004ec308faff91b37b1cbea8b4ca46ba8",
+      "bytes": 1427
     }
   },
   "runtime_revision": "micro-default-16-root-binding-20261114",
@@ -150,5 +174,10 @@
   "change_guide": {
     "workspace_relative_path": "VSCode下载/New/micro_batch_adjustment_guide.md",
     "sha256": "72cbca788e48c5428dc3d03f2bf9948cb567e90f20baf8a375a386f6d2a532fb"
+  },
+  "rtx_selection": {
+    "manifest": "rtx-selection-manifest.json",
+    "server_accessed": true,
+    "selection_started": false
   }
 }

@@ -4,7 +4,9 @@
 
 本分支发布“冻结随机初始化的 backbone，只训练完整 LM Head”的实验方案，并研究能否用 Hessian 信息构造二次函数，复现优化器排序。现已提供独立的 G/T/K 训练代码、Hessian 子块测量和启动脚本。实现检查与目标 GPU 验收状态见 [验证记录](docs/experiments/lm-head-only/IMPLEMENTATION_VALIDATION.md)。
 
-LM Head 的训练和离线测量现在默认 **MICRO_BATCH=16**，支持用 16/32 在独立临时目录上卡测速。全局 batch 和训练预算保持不变；同一实验根目录锁定一个 micro，G/T/K 及跨目标报告均校验一致性。H100 最终档位仍待三个目标共同验收，步骤见[启动说明](LM_HEAD_RUN.md#h100-选档分别测-16-和-32)。
+LM Head 的训练和离线测量默认 **MICRO_BATCH=16**。先在双 RTX PRO 6000 上并行比较 16/32，覆盖 G/T/K 四优化器，再把选定档位交给 H100 做 smoke 与正式训练。全局 batch、预算和配对规则保持不变。双卡入口为 scripts/select_lm_head_micro.sh，完整命令见[启动说明](LM_HEAD_RUN.md#rtx-双卡选档分别测-16-和-32)。
+
+2026-11-15 已连接 RTX 并确认两卡空闲；现有输入是 v1.4，尚缺与 H100 last-k 相同的已登记 v1.8 输入及真实 K 验收产物，因此选档尚未开始。进度见 [RTX 选档记录](docs/experiments/lm-head-only/RTX_SELECTION_RECORD.md)。
 
 ## 从这里开始
 

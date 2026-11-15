@@ -1,0 +1,30 @@
+{
+  "date": "2026-11-15",
+  "status": "implemented_input_blocked",
+  "source": {
+    "section": "14.18",
+    "sha256": "a60f210ff47b87267fdf01f7ec67ab1d5b038e846095262be09b309b99206fae"
+  },
+  "training_code_unchanged": true,
+  "validation": {
+    "unique_tests": 35,
+    "selection_tests": 10,
+    "combined_tests": 34,
+    "combined_seconds": 68.007,
+    "final_selection_seconds": 4.224,
+    "gpu_training_started": false,
+    "logs": {
+      "rtx-selection-tests.log": "08df1ed0d108489b0943cf8bed3b3eb898f8dfc6e57c7ec32d1f21cc6eb28c43",
+      "rtx-selection-final.log": "9b39da852bee5b0b56b71e693af802ffe5052d4468f6f39d435fce07b90597c5"
+    }
+  },
+  "files": {
+    "scripts/select_lm_head_micro.py": "9d09249d48e8255cbd4f7261a23437b74f3293807555f4b871928398bff0dd7c",
+    "scripts/select_lm_head_micro.sh": "23a7f7c6050c6b1e4805730dabc5cf80fdefb66d552c9f46ef58474b1daa1b4d",
+    "tests/test_lm_head_selection.py": "1ad686624b9732d3b2df471d50b59696ba988f5e69da2af2d1c706d24e3b4095",
+    "LM_HEAD_RUN.md": "9b1f686e9d66f44ab8594013881a105b0f099e3530ec320ed7305259fb44b3d1",
+    "README.md": "42b839114b70d88ca03bc110a0a557439008470bc2d233d72b1c96ccd036c010",
+    "docs/experiments/lm-head-only/RTX_SELECTION_RECORD.md": "79c285420bae908e078e3ae61e87074c5c12d3ddf230a1b346e561bac2fec020",
+    "docs/superpowers/plans/2026-11-15-rtx-micro-selection.md": "f88c22d17ee7dbb1187ef84ee0b436270df281643b7a0d6799e5bd3ac98fbcc4"
+  }
+}

@@ -28,36 +28,52 @@ check 验证哈希、输入协议和根目录 micro；plan 只打印任务、mic
 
 G/T/K 在同一个 LH_RUN_ROOT 中锁定同一个 micro；smoke、clean、grid 和恢复都受检查。report 会逐候选验证 micro，并在 CSV 记录该值。旧根登记缺少 micro 时拒绝自动迁移；改变 micro、代码或输入必须使用全新目录。已运行的实验继续用原冻结 checkout，不在运行期间更新代码。
 
-### H100 选档：分别测 16 和 32
+### RTX 双卡选档：分别测 16 和 32
 
-默认 16 尚未经过 H100 验收。正式开始前，在两个独立临时根目录完成 G/T/K 各四优化器的 32 步 smoke。每个目标分别执行，先查看退出状态与性能记录再继续：
+在双 RTX PRO 6000 上完成选档，H100 只验收选中的共同 micro。监督脚本让第一张卡测 16，第二张卡测 32，各自顺序完成 G/T/K、四优化器、32 步，共 24 个 smoke。使用当前 last-k 已登记的同一 v1.8 输入包；旧 v1.4 输入或重新生成的不同输入不能替代。
 
 ~~~bash
-export LH_RUN_ROOT=/absolute/path/to/temporary-smoke/micro-16
-export MICRO_BATCH=16
-OBJECTIVE=G bash scripts/run_lm_head.sh smoke
-OBJECTIVE=T bash scripts/run_lm_head.sh smoke
-# K_STATISTICS 必须是当前代码、输入下已通过第 3 节几何验收的产物
+export PYTHON=/absolute/path/to/python
+export INPUT_ROOT=/absolute/path/to/registered-input-bundle
+export SELECTION_ROOT=/absolute/path/to/new-rtx-selection
 export K_STATISTICS=/absolute/path/to/approved/K-approved.pt
-OBJECTIVE=K bash scripts/run_lm_head.sh smoke
+bash scripts/select_lm_head_micro.sh --input-root "$INPUT_ROOT" \
+  --selection-root "$SELECTION_ROOT" --devices 0,1 --statistics "$K_STATISTICS"
 ~~~
 
-随后换成另一个新目录及 MICRO_BATCH=32，重复三个目标。已有 K 产物可以用于两个独立目录的吞吐测量；这些测速结果不进入正式配对排名。若 K 还未通过几何验收，先保留 G/T 的测速记录并标明“K 未测”，不要伪造 K 通过标记，也不要宣布三目标定档完成。
+脚本先验证输入与 K，再检查两卡无计算进程、利用率为 0、每卡已占显存不超过 1 GiB。它记录 GPU UUID、软件和代码身份，并使用内核锁防止同目录双开。检测后其他用户仍可能占卡；出现资源冲突应保留失败记录，在空闲时显式重试。
 
-比较每个 smoke 目录中的 performance.json：wall_seconds、各分项时间和 peak_allocated_bytes。必须检查 T 和 K，不能只凭 G 的表现选 32。T 会同时保留多份完整词表中间张量，micro 增大可能显著增加显存；本版保持 T/K 算子不变，K 的固定二次项仍在每个 micro-batch 中计算。具体吞吐、显存余量和工期以实测为准。
+若 K 尚未获得，可先执行下面的 G/T 部分；退出码 3 和 selected_micro=null 表示完整选档尚未完成。K 的测量仍使用第 3 节的真实拟合与留出流程；曲率测量应与双卡选档错开，避免同时占卡。得到 K-approved.pt 后执行上面的完整命令，已完成 G/T 经核验后自动复用。
 
-若某档 OOM，保留失败记录，在其他新目录测试较小档位；不在同一目录改 micro 接着跑。三目标均通过后选定共同档位，按第 2 节在全新正式根目录重新生成各目标的 smoke 凭证。临时结果不复制为正式凭证，脚本不自动选档、降档或清理目录。
+~~~bash
+bash scripts/select_lm_head_micro.sh --input-root "$INPUT_ROOT" \
+  --selection-root "$SELECTION_ROOT" --devices 0,1 --stage gt
+# 完成/停止后，只汇总已有证据（无 GPU 计算）
+bash scripts/select_lm_head_micro.sh --selection-root "$SELECTION_ROOT" --report-only
+~~~
+
+每个 micro/目标组保留 attempt-0000 等独立目录及 console.log、execution.json。重新运行不会自动重试失败组；需要重试时在原命令加 --retry-failed。重试从新目录第 0 步开始，避免用恢复后的部分时间比较吞吐。Ctrl-C/TERM 停止后续调度并通知正在执行的 smoke；超过 30 秒仍未退出的子进程会被终止，已有产物保留。
+
+selection.json 汇总全部状态、四优化器分项时间、峰值 allocated 和含启动开销的外层耗时。只有六组均为完整成功或明确 CUDA OOM，才判定测试完成；输入/进程错误、数值失败或 K 缺失均阻止定档。可选档位须三目标全通过，且每次 PyTorch 峰值 allocated 不超过 RTX 总显存的 90%。在合格档位中比较十二次完整 smoke 的 wall_seconds 总和，取较短者，精确相同取 16。该显存规则提供工程余量，实际设备空闲量和 H100 容量仍需实测。
+
+T 的完整词表中间张量随 micro 增加；K 的固定二次项仍在每个 micro-batch 计算。选档数据只用于运行布局，不进入优化器正式排名。selection.json 与 K 产物一并交接到 H100；保持相同代码、输入和 K 哈希，不复制 RTX 的 smoke 凭证。H100 不再比较两个档位。
 
 ## 2. 先验收，再启动 G clean
 
-完成选档后设置正式 LH_RUN_ROOT 和共同 MICRO_BATCH。下面以已选定 16 为例；若实测选择 32，只在新正式目录首次绑定前设置为 32：
+在 H100 上，从已完成的 selection.json 读取共同 micro，在全新正式根目录先通过 G/T/K 三目标的 smoke。任一失败都先停止；只有验收成功，才显式执行 clean：
 
 ~~~bash
 export LH_RUN_ROOT=/absolute/path/to/new-formal-lm-head-results
-export MICRO_BATCH=16
-export OBJECTIVE=G
-bash scripts/run_lm_head.sh smoke
-bash scripts/run_lm_head.sh clean
+export SELECTION_ROOT=/absolute/path/to/transferred-selection-directory
+export K_STATISTICS=/absolute/path/to/transferred/K-approved.pt
+MICRO_BATCH="$(bash scripts/select_lm_head_micro.sh --selection-root "$SELECTION_ROOT" \
+  --input-root "$INPUT_ROOT" --statistics "$K_STATISTICS" --handoff-micro)" || exit $?
+export MICRO_BATCH
+OBJECTIVE=G bash scripts/run_lm_head.sh smoke && \
+OBJECTIVE=T bash scripts/run_lm_head.sh smoke && \
+OBJECTIVE=K bash scripts/run_lm_head.sh smoke || exit $?
+# 三目标验收成功后，单独执行正式训练命令
+OBJECTIVE=G bash scripts/run_lm_head.sh clean
 ~~~
 
 smoke 在 GPUS 中第一张卡上顺序运行四优化器，各中心 LR、32 步。成功记录绑定输入、代码、目标及 micro batch；clean 必须找到相同身份的成功记录，才会启动四个八候选搜索，每候选 3815 步。smoke 的分数不进入排名。
