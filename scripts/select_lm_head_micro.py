@@ -185,26 +185,11 @@ def main(argv=None):
     parser.add_argument('--benchmark-only', action='store_true',
                         help='verified legacy inputs and empirical K for 32-step hardware timing only')
     parser.add_argument('--handoff-micro', action='store_true',
-                        help='validate transferred selection.json against local code/input/K; print selected micro only')
+                        help='retired: final H100 micro=16 is enforced by scripts/run_lm_head_h100.sh')
     args = parser.parse_args(argv)
     root = Path(args.selection_root).resolve()
     if args.handoff_micro:
-        if not args.input_root or not args.statistics or args.report_only:
-            parser.error('--handoff-micro requires --input-root and --statistics and excludes --report-only')
-        result = read_json(root/'selection.json')
-        identity = result['identity']
-        ident = input_identity(Path(args.input_root).resolve(), False)
-        from nanogpt_noise.lm_head.measure import load_statistics
-        from nanogpt_noise.model import Shape
-        load_statistics(args.statistics, ident, Shape(**ident['shape']))
-        if (result.get('complete') is not True or result.get('selected_micro') not in MICROS
-                or identity['code'] != code_identity()['sha256']
-                or identity['supervisor'] != file_hash(__file__)
-                or (not identity.get('benchmark_only') and
-                    (identity['input_id'] != ident['id'] or result['statistics_sha256'] != file_hash(args.statistics)))):
-            raise ValueError('completed RTX selection must match H100 code, input and approved K')
-        print(result['selected_micro'])
-        return 0
+        parser.error('--handoff-micro is retired: final H100 MICRO_BATCH=16; use scripts/run_lm_head_h100.sh')
     if args.report_only:
         with lock(root/'supervisor'):
             identity = read_json(root/'selection_identity.json')

@@ -127,24 +127,17 @@ class SelectionTests(unittest.TestCase):
             self.assertEqual(len(calls),8)
             self.assertEqual(len(list(root.glob('micro-*/*/attempt-*'))),8)
 
-    def test_h100_handoff_requires_same_input_code_and_k(self):
-        from nanogpt_noise.artifacts import file_hash
-        stats=self.root/'K-approved.pt'
-        stats.write_bytes(b'synthetic test artifact')
-        identity=dict(input_id='fixture',code=selection.code_identity()['sha256'],
-                      supervisor=file_hash(selection.__file__))
-        result=dict(identity=identity,complete=True,selected_micro=32,
-                    statistics_sha256=file_hash(stats))
-        write_json(self.root/'selection.json',result)
-        args=['--selection-root',str(self.root),'--input-root','inputs',
-              '--statistics',str(stats),'--handoff-micro']
-        with patch.object(selection,'input_identity',return_value=dict(id='fixture',shape={})), \
-             patch('nanogpt_noise.lm_head.measure.load_statistics'), \
-             patch.object(selection,'gpu_inventory') as gpu:
-            self.assertEqual(selection.main(args),0)
-            stats.write_bytes(b'changed')
-            with self.assertRaisesRegex(ValueError,'must match'):
-                selection.main(args)
+    def test_legacy_handoff_cannot_restore_32(self):
+        import contextlib
+        import io
+        error=io.StringIO()
+        with patch.object(selection,'input_identity') as inputs, \
+             patch.object(selection,'gpu_inventory') as gpu, contextlib.redirect_stderr(error):
+            with self.assertRaises(SystemExit) as exit_status:
+                selection.main(['--selection-root',str(self.root),'--handoff-micro'])
+            self.assertEqual(exit_status.exception.code,2)
+            self.assertIn('final H100 MICRO_BATCH=16',error.getvalue())
+            inputs.assert_not_called()
             gpu.assert_not_called()
 
     def test_benchmark_proof_is_separate_from_formal_smoke(self):

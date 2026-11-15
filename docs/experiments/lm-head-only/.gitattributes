@@ -3,4 +3,6 @@
 /rtx-selection-manifest.json text eol=lf
 /legacy-benchmark-manifest.json text eol=lf
 /rtx-benchmark-result.json text eol=lf
+/h100-micro-decision.json text eol=lf
+/h100-launch-validation.json text eol=lf
 /.gitattributes text eol=lf

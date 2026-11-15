@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "decision_id": "LH-MICRO-20261115-final16",
+  "date": "2026-11-15",
+  "selected_micro": 16,
+  "decided_by": "explicit_user_instruction",
+  "reason": "32 was only about 1% faster with almost twice the peak allocated memory; choose 16 for memory headroom",
+  "accumulations_per_single_gpu": 32,
+  "global_batch_sequences": 512,
+  "sequence_tokens": 1024,
+  "steps": 3815,
+  "scope": "G/T/K H100 smoke, formal training, resume and curvature",
+  "benchmark": {
+    "file": "rtx-benchmark-result.json",
+    "sha256": "4569538d7a97962dfbcd5d4634f3c5294cf50e9a4a49677f7f40338c2a19647a",
+    "automatic_recommendation": 32,
+    "preserved": true
+  },
+  "source": {
+    "section": "14.21",
+    "sha256": "40b961e5282d7631b2daf9bc92282b0e13ded1d923c57fcf568bcd84bfb902ac"
+  },
+  "launcher": "scripts/run_lm_head_h100.sh",
+  "release_tag": "lm-head-h100-m16-20261115",
+  "h100_smoke_completed": false,
+  "formal_training_started": false
+}

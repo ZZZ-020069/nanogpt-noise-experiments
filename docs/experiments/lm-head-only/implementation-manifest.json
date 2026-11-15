@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "design": "LH-QP-20261114-draft2",
-  "status": "rtx_legacy_hardware_selection_completed_h100_pending",
+  "status": "h100_micro16_launch_ready_hardware_acceptance_pending",
   "branch": "design/lm-head-only-20261114",
   "base_commit": "bb3cf72e1113d0e9ceb903515772bfb1d1161df9",
   "source": {
     "workspace_relative_path": "VSCode下载/New/nanogpt_experiment_design.md",
-    "section": "14.16–14.20",
-    "sha256": "1b8f335de7465ec74c19242e808eeccfc8ab2602e09a80b8ca791836aa78ef1f"
+    "section": "14.16–14.21",
+    "sha256": "40b961e5282d7631b2daf9bc92282b0e13ded1d923c57fcf568bcd84bfb902ac"
   },
   "code": {
     "sha256": "96a26c198b744c0de2fcff34855ae33865c6a6f67e046aacbc101cfa64ae4b7c",
@@ -61,16 +61,16 @@
   },
   "files": {
     "docs/experiments/lm-head-only/IMPLEMENTATION_RECORD.md": {
-      "sha256": "21fb28ca3dd734454457560266d470e1058fdcb9a1d0de571a5532f5314e7f66",
-      "bytes": 7215
+      "sha256": "6490eb39149b5dfbf441675f38bf6e7ffa5afa67f1c52564583fff8a8e52e909",
+      "bytes": 7412
     },
     "docs/experiments/lm-head-only/IMPLEMENTATION_VALIDATION.md": {
-      "sha256": "19b74b620829bd04f4575c17821dbefca0074e8d39e91f5c2f046873c78526f4",
-      "bytes": 5978
+      "sha256": "2173a0093b38aa6189181ef792edb9c4b5281923c4a053ed91ebfc419c34e39d",
+      "bytes": 6175
     },
     "LM_HEAD_RUN.md": {
-      "sha256": "c0641247aa74975ccd3d6fc1e6f961b8765864da5bf5a813e94854af64dd3b7c",
-      "bytes": 12956
+      "sha256": "f12a6cea4683e40bb9f2393acd303c730093dedde08cc846ccc156c55cb7959a",
+      "bytes": 9840
     },
     "nanogpt_noise/lm_head/__init__.py": {
       "sha256": "8302238bf9f0bdcd19d7c1835c81124b44710e61832451cd73645b7e4d386313",
@@ -113,12 +113,12 @@
       "bytes": 23008
     },
     "README.md": {
-      "sha256": "c13869f166443ed749cd11e7e694f29bf1d37a47b11bd4feac764339ade54e5d",
-      "bytes": 4381
+      "sha256": "43f20392b08c672cec75e4156d6738e37d2b7387250b6934a7ed5d95fcee8c9f",
+      "bytes": 4320
     },
     "scripts/run_lm_head.sh": {
-      "sha256": "a340decbab47a5b4faecc59f10d068ead73480a455164cc2ed05134e38299922",
-      "bytes": 3088
+      "sha256": "1bed0ddc52cbe1f99a8a89c029dd0d08e36e3c2c6ad77821c2d73b517217ce3e",
+      "bytes": 3103
     },
     "tests/test_lm_head.py": {
       "sha256": "17bcdf921a6dba2cc3c827a124baffc3204396d5d8341d2ef77cc7ba8060d54e",
@@ -141,24 +141,24 @@
       "bytes": 1333
     },
     "docs/experiments/lm-head-only/.gitattributes": {
-      "sha256": "9e798a420d17a0d658075857cd4a97a62cebaa7c498c13b833f20a733ec81768",
-      "bytes": 235
+      "sha256": "987721435fad51fcc45bd8e7ccf346b994ccac0c68ae71757b3c5fbbce7f2019",
+      "bytes": 314
     },
     "scripts/select_lm_head_micro.py": {
-      "sha256": "7a43f278521aefad99102dcf570d315f1093e6b62256794ea9d65f4ddeb73104",
-      "bytes": 17228
+      "sha256": "bb5a8cfc3a033d0add0045df42daaa14d2c6dfb352026c7bddbde372b4bb48b1",
+      "bytes": 16232
     },
     "scripts/select_lm_head_micro.sh": {
       "sha256": "23a7f7c6050c6b1e4805730dabc5cf80fdefb66d552c9f46ef58474b1daa1b4d",
       "bytes": 173
     },
     "tests/test_lm_head_selection.py": {
-      "sha256": "6d108777f92a2b3082a92a6dd149bc7d042bd6bbac5b582bb6418b1253838f9c",
-      "bytes": 9181
+      "sha256": "906cd5e42e73eec122c2d9a9212f3f169d63c86f69b8827153a14e4ee8163312",
+      "bytes": 8688
     },
     "docs/experiments/lm-head-only/RTX_SELECTION_RECORD.md": {
-      "sha256": "72c00768b90a0c69a0536a025001c61dfb86b86bcb5d47486a9690bd8151eb19",
-      "bytes": 7077
+      "sha256": "4153f6b8d1f8de4b8444a1a7a57821650a4d461b1de707e841d625828485390f",
+      "bytes": 7520
     },
     "docs/superpowers/plans/2026-11-15-rtx-micro-selection.md": {
       "sha256": "dec49d01c667cbf6aa38d524759b0defce584963db8598161ee9f1e821cba62f",
@@ -195,9 +195,37 @@
     "docs/experiments/lm-head-only/rtx-benchmark-result.json": {
       "sha256": "4569538d7a97962dfbcd5d4634f3c5294cf50e9a4a49677f7f40338c2a19647a",
       "bytes": 1661
+    },
+    ".gitattributes": {
+      "sha256": "73e8ec33c6378cffef1e5cadfb2d777e9df4d0374aed47f85b82a8a702540630",
+      "bytes": 125
+    },
+    "scripts/run_lm_head_h100.sh": {
+      "sha256": "895997bf449b75e6bf7514462363dc8ecfb66f6fe337adef2f9e3cbc109681af",
+      "bytes": 1836
+    },
+    "scripts/lm_head_h100.env.example": {
+      "sha256": "1afd33dcd69136233fbfd644ad71d8e52cf94b8e77e8dad85796b52a304c6f3d",
+      "bytes": 456
+    },
+    "tests/test_lm_head_h100.py": {
+      "sha256": "2c2c2b2ef663fdcfeba80ca2694e9bad90090b971a13557949326921a7ede370",
+      "bytes": 4342
+    },
+    "docs/experiments/lm-head-only/h100-micro-decision.json": {
+      "sha256": "36b08351d962af08744d217b9e0dc3a3b06b69f2e1ec3bfdbd6162843d6032ac",
+      "bytes": 947
+    },
+    "docs/superpowers/plans/2026-11-15-h100-micro16.md": {
+      "sha256": "5f279106c9fac539b5b3100089546e526e2dc9940eb1786078649ed41c355221",
+      "bytes": 2795
+    },
+    "docs/experiments/lm-head-only/h100-launch-validation.json": {
+      "sha256": "ee1ceb5e970ae2e56a0c6d6daefe078c741b30ca0db0273a97c01245d6ce879e",
+      "bytes": 2426
     }
   },
-  "runtime_revision": "micro-default-16-root-binding-20261114",
+  "runtime_revision": "h100-final-micro16-20261115",
   "previous_implementation_commit": "f8c04bad0b6113dc5074b38c8d3eb38b4dd1166d",
   "default_micro": 16,
   "change_guide": {
@@ -209,8 +237,17 @@
     "server_accessed": true,
     "selection_started": true,
     "selection_completed": true,
-    "selected_micro": 32,
-    "result": "rtx-benchmark-result.json"
+    "selected_micro": 16,
+    "result": "rtx-benchmark-result.json",
+    "selected_by": "user_final_decision",
+    "benchmark_recommendation_micro": 32
   },
-  "legacy_benchmark": "legacy-benchmark-manifest.json"
+  "legacy_benchmark": "legacy-benchmark-manifest.json",
+  "h100_launch": {
+    "decision": "h100-micro-decision.json",
+    "validation": "h100-launch-validation.json",
+    "release_tag": "lm-head-h100-m16-20261115",
+    "selected_micro": 16
+  },
+  "legacy_benchmark_snapshot_commit": "43d8484c65b956cd93406938b2f4416b1f36e6c8"
 }

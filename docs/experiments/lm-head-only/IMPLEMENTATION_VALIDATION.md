@@ -1,5 +1,7 @@
 # LM Head-only 实现与验证记录
 
+> 历史实现/验证快照。当前最终档位为 micro=16（用户决定），RTX 实测已完成，H100 验收待执行；最新命令见仓库 LM_HEAD_RUN.md。下文保留原日期记录。
+
 2026-11-14，依据工作区主设计第 14 章实现 LH-QP-20261114-draft2。启动入口见 [LM_HEAD_RUN.md](../../../LM_HEAD_RUN.md)。实现身份与文件哈希见 [implementation-manifest.json](implementation-manifest.json)。
 
 ## 已交付

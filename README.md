@@ -4,9 +4,11 @@
 
 本分支发布“冻结随机初始化的 backbone，只训练完整 LM Head”的实验方案，并研究能否用 Hessian 信息构造二次函数，复现优化器排序。现已提供独立的 G/T/K 训练代码、Hessian 子块测量和启动脚本。实现检查与目标 GPU 验收状态见 [验证记录](docs/experiments/lm-head-only/IMPLEMENTATION_VALIDATION.md)。
 
-LM Head 的训练和离线测量默认 **MICRO_BATCH=16**。先在双 RTX PRO 6000 上并行比较 16/32，覆盖 G/T/K 四优化器，再把选定档位交给 H100 做 smoke 与正式训练。全局 batch、预算和配对规则保持不变。双卡入口为 scripts/select_lm_head_micro.sh，完整命令见[启动说明](LM_HEAD_RUN.md#rtx-双卡选档分别测-16-和-32)。
+**最终统一使用 MICRO_BATCH=16。** RTX 两档的 24 个候选全部通过，32 只快约 1%，峰值 allocated 却接近两倍；用户因此选择 16。H100 入口 scripts/run_lm_head_h100.sh 固定这一档位，拒绝残留的 32。
 
-2026-11-15 用户允许 RTX 硬件测速沿用旧 v1.4 输入。新增 --benchmark-only：旧文件按原哈希读取，固定 32 步，K 使用独立经验统计包；测速身份与正式实验隔离。H100 仍以正式 v1.8 输入和已验收 K 完成 smoke。实测 24 项全部通过，双卡约 20 分钟；规则选中 32（整体约快 1%，峰值 allocated 44.38 GiB；16 为 22.86 GiB）。结果见 [RTX 选档记录](docs/experiments/lm-head-only/RTX_SELECTION_RECORD.md)。
+**H100 只看 [LM_HEAD_RUN.md](LM_HEAD_RUN.md)**：包含固定标签 lm-head-h100-m16-20261115 的下载、共同环境文件、smoke、formal（clean）、grid、恢复和正式 K 准备命令。G/T 可先运行；K 仍需正式验收。当前尚未在 H100 启动任务。
+
+[RTX 原始实测](docs/experiments/lm-head-only/RTX_SELECTION_RECORD.md)保留自动推荐 32 的历史输出；[最终档位决策](docs/experiments/lm-head-only/h100-micro-decision.json)记录用户确定的 16。旧输入与经验 K 仅用于硬件测速，不进入正式实验。
 
 ## 从这里开始
 

@@ -1,0 +1,39 @@
+{
+  "date": "2026-11-15",
+  "status": "commands_validated_h100_gpu_pending",
+  "source": {
+    "section": "14.21",
+    "sha256": "40b961e5282d7631b2daf9bc92282b0e13ded1d923c57fcf568bcd84bfb902ac"
+  },
+  "selected_micro": 16,
+  "release_tag": "lm-head-h100-m16-20261115",
+  "training_code_sha256": "96a26c198b744c0de2fcff34855ae33865c6a6f67e046aacbc101cfa64ae4b7c",
+  "training_code_changed": false,
+  "raw_benchmark_changed": false,
+  "tests": {
+    "count": 22,
+    "passed": 22,
+    "seconds": 14.72,
+    "log_sha256": "734fdbc53c05477be5788267047f6a34666ca28ad137258b4aa7474b6038c423",
+    "bash_doc_blocks": 10,
+    "real_cli_plan_sha256": "bcc0d30029aba0e566ac07fd75b856056d3d8330d886990fb38bb49d2db9fc35"
+  },
+  "h100_training_started": false,
+  "files": {
+    ".gitattributes": "73e8ec33c6378cffef1e5cadfb2d777e9df4d0374aed47f85b82a8a702540630",
+    "LM_HEAD_RUN.md": "f12a6cea4683e40bb9f2393acd303c730093dedde08cc846ccc156c55cb7959a",
+    "README.md": "43f20392b08c672cec75e4156d6738e37d2b7387250b6934a7ed5d95fcee8c9f",
+    "scripts/run_lm_head_h100.sh": "895997bf449b75e6bf7514462363dc8ecfb66f6fe337adef2f9e3cbc109681af",
+    "scripts/lm_head_h100.env.example": "1afd33dcd69136233fbfd644ad71d8e52cf94b8e77e8dad85796b52a304c6f3d",
+    "scripts/run_lm_head.sh": "1bed0ddc52cbe1f99a8a89c029dd0d08e36e3c2c6ad77821c2d73b517217ce3e",
+    "scripts/select_lm_head_micro.py": "bb5a8cfc3a033d0add0045df42daaa14d2c6dfb352026c7bddbde372b4bb48b1",
+    "tests/test_lm_head_h100.py": "2c2c2b2ef663fdcfeba80ca2694e9bad90090b971a13557949326921a7ede370",
+    "tests/test_lm_head_selection.py": "906cd5e42e73eec122c2d9a9212f3f169d63c86f69b8827153a14e4ee8163312",
+    "docs/experiments/lm-head-only/.gitattributes": "987721435fad51fcc45bd8e7ccf346b994ccac0c68ae71757b3c5fbbce7f2019",
+    "docs/experiments/lm-head-only/h100-micro-decision.json": "36b08351d962af08744d217b9e0dc3a3b06b69f2e1ec3bfdbd6162843d6032ac",
+    "docs/experiments/lm-head-only/RTX_SELECTION_RECORD.md": "4153f6b8d1f8de4b8444a1a7a57821650a4d461b1de707e841d625828485390f",
+    "docs/experiments/lm-head-only/IMPLEMENTATION_RECORD.md": "6490eb39149b5dfbf441675f38bf6e7ffa5afa67f1c52564583fff8a8e52e909",
+    "docs/experiments/lm-head-only/IMPLEMENTATION_VALIDATION.md": "2173a0093b38aa6189181ef792edb9c4b5281923c4a053ed91ebfc419c34e39d",
+    "docs/superpowers/plans/2026-11-15-h100-micro16.md": "5f279106c9fac539b5b3100089546e526e2dc9940eb1786078649ed41c355221"
+  }
+}

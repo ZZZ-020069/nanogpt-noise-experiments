@@ -11,7 +11,7 @@ Usage: bash scripts/run_lm_head.sh ACTION
 Actions: check smoke clean grid resume pause status report plan curvature-fit curvature-check
 Required: INPUT_ROOT (registered immutable inputs), LH_RUN_ROOT (new output tree)
 Options: OBJECTIVE=G|T|K, GPUS=0, MICRO_BATCH=16, PYTHON=python
-Compare 16/32 in separate smoke roots; G/T/K share one locked micro per root.
+Final H100 micro=16: use scripts/run_lm_head_h100.sh. G/T/K share one locked micro per root.
 K requires K_STATISTICS=/path/to/K-approved.pt.
 resume requires LH_PHASE=clean|grid. plan uses LH_PHASE=clean by default.
 Curvature: LH_CURVATURE_DIR; check also LH_FIT_DIR.
