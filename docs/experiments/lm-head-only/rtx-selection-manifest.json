@@ -3,7 +3,7 @@
   "status": "implemented_input_blocked",
   "source": {
     "section": "14.18",
-    "sha256": "a60f210ff47b87267fdf01f7ec67ab1d5b038e846095262be09b309b99206fae"
+    "sha256": "aecbfcb2b3112e3cb053ad22c88680c9f828a5317e6d7b138e80434d655d808e"
   },
   "training_code_unchanged": true,
   "validation": {
@@ -24,7 +24,20 @@
     "tests/test_lm_head_selection.py": "1ad686624b9732d3b2df471d50b59696ba988f5e69da2af2d1c706d24e3b4095",
     "LM_HEAD_RUN.md": "9b1f686e9d66f44ab8594013881a105b0f099e3530ec320ed7305259fb44b3d1",
     "README.md": "42b839114b70d88ca03bc110a0a557439008470bc2d233d72b1c96ccd036c010",
-    "docs/experiments/lm-head-only/RTX_SELECTION_RECORD.md": "79c285420bae908e078e3ae61e87074c5c12d3ddf230a1b346e561bac2fec020",
-    "docs/superpowers/plans/2026-11-15-rtx-micro-selection.md": "f88c22d17ee7dbb1187ef84ee0b436270df281643b7a0d6799e5bd3ac98fbcc4"
+    "docs/experiments/lm-head-only/RTX_SELECTION_RECORD.md": "db1829976a72ed18755fbad7b14f60a81d89b000806eac5b63b4b5c511fe431b",
+    "docs/superpowers/plans/2026-11-15-rtx-micro-selection.md": "dec49d01c667cbf6aa38d524759b0defce584963db8598161ee9f1e821cba62f"
+  },
+  "deployment": {
+    "commit": "2e8c723be45dba655d12192f1e978639f8e151da",
+    "path": "/experiments/xuyangzhang/nanogpt-lm-head-rtx-20261115-2e8c723",
+    "archive_sha256": "62c32eef8053ac1c36d835e83b5bf578bef4c117d73bc34b534732946497d5ab",
+    "linux_tests": 10,
+    "linux_seconds": 0.225,
+    "preflight": "rejected_missing_registered_v1.8_input",
+    "gpu_training_started": false,
+    "evidence": {
+      "lm-head-rtx-preflight-20261115.log": "ff6f2a467c8ec8d64e087cd36cbaaf47fd1d3adf3c140bc2ab96461a2167263a",
+      "lm-head-rtx-selection-tests-20261115.log": "fad67a6830756dd980fb218973bb37246b6cf8671fa8f76eb52824d1e670e2b1"
+    }
   }
 }

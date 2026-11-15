@@ -31,8 +31,9 @@ Files: LM_HEAD_RUN.md, README.md, docs/experiments/lm-head-only/RTX_SELECTION_RE
 
 - [x] Replace H100 dual-micro selection instructions with RTX selection, followed by only selected-micro H100 acceptance. Include exact GT, curvature, all/resume, report and handoff commands.
 - [x] Save real GPU evidence and input blocker; distinguish hardware inspection from a completed selection.
-- [ ] Commit/push the isolated branch; deploy to a fresh remote directory, never the old running checkout.
-- [ ] Verify remote help/preflight. Run real selection only with matching registered v1.8 input and genuine K approval; preserve failure reports instead of changing scientific thresholds.
+- [x] Commit/push the isolated branch; deploy to a fresh remote directory, never the old running checkout.
+- [x] Verify remote help/preflight and ten CPU-only Linux tests. Old input is rejected before GPU execution.
+- [ ] Run real selection after the current registered v1.8 input is provided; K still requires genuine approval. This step is blocked on missing input, not marked complete.
 
 Core report rule:
 
@@ -47,4 +48,4 @@ selected = min(eligible, key=lambda m: (sum(g['wall_seconds'] for g in groups
 
 Review: six objective groups must exist explicitly; missing groups are pending. An old successful report must never survive unvalidated changed evidence. No formal-training command is dispatched by this supervisor.
 
-Execution checkpoint: implementation and 35 distinct checks passed. Deployment verification is next. Real selection remains blocked on the current registered input; no candidate has run.
+Execution checkpoint: implementation and 35 distinct checks passed. Deployment verification passed at fixed implementation commit 2e8c723. Real selection remains blocked on the current registered input; no candidate has run.
