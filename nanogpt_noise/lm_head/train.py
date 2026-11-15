@@ -15,7 +15,7 @@ import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from .model import build_optimizer, HeadGPT
-from ..telemetry import Telemetry
+from .telemetry import Telemetry
 from ..artifacts import (read_json,write_json,save_checkpoint,tensor_hash,digest,
                         environment,lock,cleanup_atomic_temps)
 from ..data import batch,verify
@@ -307,7 +307,11 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
     started = time.monotonic()
     segment_start = step
     try:
-        telemetry = None
+        cloud_config=dict(config, input_id=ident['id'], code=execution['code'],
+                          micro=micro, accumulations=accumulation,
+                          target_steps=target, step_tokens=budget.step_tokens,
+                          statistics_sha256=artifact_hash)
+        telemetry = Telemetry(output,cloud_config,identity,mode,step) if rt.rank==0 else None
         publish_progress()
         rt.check([('parameters:'+n,p) for n,p in model.named_parameters()])
         rt.check([('optimizer_state',t) for t in bundle.state_tensors()])

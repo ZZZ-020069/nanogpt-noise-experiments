@@ -15,6 +15,8 @@ Actions: check plan smoke smoke-all formal clean grid resume pause status report
 formal = clean (four optimizers, eight LR candidates each, 3815 steps each).
 Required: INPUT_ROOT (registered v1.8 inputs), LH_RUN_ROOT (fresh formal output).
 Options: PYTHON=python, GPUS=0,1,2,3, OBJECTIVE=G|T|K (default G).
+SwanLab defaults on: set SWANLAB_API_KEY in the task environment.
+Default project: nanogpt-lm-head; NANOGPT_SWANLAB=0 explicitly disables uploads.
 K and smoke-all require formal approved K_STATISTICS.
 resume requires LH_PHASE=clean|grid. MICRO_BATCH must be unset or exactly 16.
 Smoke never starts formal training. Grid is a separate explicit action.
@@ -29,6 +31,23 @@ fi
 export MICRO_BATCH=16
 export GPUS="${GPUS:-0,1,2,3}"
 export OBJECTIVE="${OBJECTIVE:-G}"
+export NANOGPT_SWANLAB="${NANOGPT_SWANLAB:-1}"
+export SWANLAB_PROJ_NAME="${SWANLAB_PROJ_NAME:-nanogpt-lm-head}"
+if [[ "$action" == smoke-all ]]; then
+  : "${K_STATISTICS:?smoke-all requires formal K-approved.pt; G/T smoke can run separately}"
+fi
+case "$action" in
+  check|smoke|smoke-all|formal|clean|grid|resume)
+    export RUN_BASE="${LH_RUN_ROOT:?Set LH_RUN_ROOT to a fresh output tree}"
+    if [[ "$NANOGPT_SWANLAB" == 1 ]]; then
+      : "${SWANLAB_API_KEY:?Set SWANLAB_API_KEY in the task environment for SwanLab}"
+      "${PYTHON:-python}" -m nanogpt_noise.lm_head.telemetry
+    elif [[ "$NANOGPT_SWANLAB" != 0 ]]; then
+      printf 'NANOGPT_SWANLAB must be 0 or 1.\n' >&2
+      exit 2
+    fi
+    ;;
+esac
 case "$action" in
   formal) action=clean ;;
   smoke-all)

@@ -15,12 +15,15 @@ class H100Launch(unittest.TestCase):
             stub.write_text('#!/usr/bin/env bash\nprintf "CALL\\n"\n'
                             'printf "ARG=<%s>\\n" "$@"\n'
                             'printf "CUDA=<%s>\\n" "$CUDA_VISIBLE_DEVICES"\n'
+                            'printf "SWAN=<%s> PROJECT=<%s> CACHE=<%s>\\n" "$NANOGPT_SWANLAB" "$SWANLAB_PROJ_NAME" "$RUN_BASE"\n'
+                            'if [[ "${FAIL_PREFLIGHT:-0}" == 1 && "$*" == *"lm_head.telemetry"* ]]; then exit 19; fi\n'
                             'if [[ "${FAIL_T:-0}" == 1 && "$*" == *"--objective T"* ]]; then exit 17; fi\n',
                             encoding='utf8')
             stub.chmod(0o755)
             env={**os.environ,'PYTHON':stub.as_posix(),'INPUT_ROOT':'/formal inputs',
                  'LH_RUN_ROOT':'/new h100 output','GPUS':'','MICRO_BATCH':'','OBJECTIVE':'G',
-                 'K_STATISTICS':'','LH_PHASE':'','LH_CURVATURE_DIR':'/new curvature',**overrides}
+                 'K_STATISTICS':'','LH_PHASE':'','LH_CURVATURE_DIR':'/new curvature',
+                 'NANOGPT_SWANLAB':'0',**overrides}
             return subprocess.run([BASH,'scripts/run_lm_head_h100.sh',action],env=env,
                       cwd=Path(__file__).resolve().parents[1],capture_output=True,text=True,encoding='utf8')
 
@@ -78,6 +81,31 @@ class H100Launch(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertIn('ARG=<curvature>',result.stdout)
         self.assertIn('ARG=<--micro-batch>\nARG=<16>',result.stdout)
+
+    def test_swanlab_default_on_preflight_and_explicit_off(self):
+        missing=self.invoke('smoke',NANOGPT_SWANLAB='',SWANLAB_API_KEY='')
+        self.assertNotEqual(missing.returncode,0)
+        self.assertIn('SWANLAB_API_KEY',missing.stderr)
+        self.assertNotIn('CALL',missing.stdout)
+        for action in ('check','smoke','formal','grid','resume'):
+            result=self.invoke(action,NANOGPT_SWANLAB='',SWANLAB_API_KEY='fake-key',
+                               SWANLAB_PROJ_NAME='',LH_PHASE='clean')
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(result.stdout.count('CALL'),2)
+            self.assertIn('ARG=<nanogpt_noise.lm_head.telemetry>',result.stdout)
+            self.assertIn('SWAN=<1> PROJECT=<nanogpt-lm-head> CACHE=</new h100 output>',result.stdout)
+            self.assertNotIn('fake-key',result.stdout+result.stderr)
+        failed=self.invoke('formal',NANOGPT_SWANLAB='1',SWANLAB_API_KEY='fake-key',FAIL_PREFLIGHT='1')
+        self.assertEqual(failed.returncode,19)
+        self.assertEqual(failed.stdout.count('CALL'),1)
+        self.assertEqual(self.invoke('smoke',NANOGPT_SWANLAB='0',SWANLAB_API_KEY='').returncode,0)
+        self.assertNotEqual(self.invoke('smoke',NANOGPT_SWANLAB='bad').returncode,0)
+
+    def test_readonly_and_curvature_need_no_swanlab_credentials(self):
+        for action in ('plan','status','report','pause','curvature-fit'):
+            result=self.invoke(action,NANOGPT_SWANLAB='1',SWANLAB_API_KEY='')
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertNotIn('ARG=<nanogpt_noise.lm_head.telemetry>',result.stdout)
 
 
 if __name__=='__main__':unittest.main()

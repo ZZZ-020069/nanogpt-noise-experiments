@@ -4,7 +4,7 @@
 
 本分支发布“冻结随机初始化的 backbone，只训练完整 LM Head”的实验方案，并研究能否用 Hessian 信息构造二次函数，复现优化器排序。现已提供独立的 G/T/K 训练代码、Hessian 子块测量和启动脚本。实现检查与目标 GPU 验收状态见 [验证记录](docs/experiments/lm-head-only/IMPLEMENTATION_VALIDATION.md)。
 
-**正式执行固定 MICRO_BATCH=16**，单卡累积 32 次，G/T/K 使用同一布局。
+**正式执行固定 MICRO_BATCH=16**，单卡累积 32 次，G/T/K 使用同一布局。H100 默认开启 SwanLab，项目名 nanogpt-lm-head；在平台任务环境配置 SWANLAB_API_KEY，先通过 smoke 并确认网页收到指标。
 
 **H100 启动只看 [LM_HEAD_RUN.md](LM_HEAD_RUN.md)**：包含固定版本下载、共同环境文件、smoke、formal（clean）、grid、恢复和正式 K 准备命令。G/T 可先运行；K 需要通过正式验收。
 

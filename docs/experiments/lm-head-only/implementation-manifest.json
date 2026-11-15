@@ -1,18 +1,18 @@
 {
   "schema": 1,
   "design": "LH-QP-20261114-draft2",
-  "status": "micro16_only_h100_smoke_pending",
+  "status": "swanlab_wired_h100_cloud_smoke_pending",
   "branch": "design/lm-head-only-20261114",
-  "release_tag": "lm-head-h100-m16-20261115-v2",
+  "release_tag": "lm-head-h100-m16-20261115-v3",
   "base_commit": "bb3cf72e1113d0e9ceb903515772bfb1d1161df9",
-  "previous_implementation_commit": "55d51aac30201ff1beac28c500c8c99033962181",
+  "previous_implementation_commit": "24dbc518c761796de775cb6d46caffa8755491c6",
   "source": {
     "workspace_relative_path": "VSCode下载/New/nanogpt_experiment_design.md",
-    "section": "14.16–14.22",
-    "sha256": "1ac594af20515805119a194223f9d10608f62337d84977450f192381e143f14c"
+    "section": "14.16–14.23",
+    "sha256": "8c2f7d6b4fd05691b63a74e896e151d76a4aef82425a8f47f3b69f42c503a00f"
   },
   "code": {
-    "sha256": "70e4d1525e5032378d47be1f1348ec1267a984a43c04afa470dcb1024c2a96c0",
+    "sha256": "f2a7040f5fdb374ba767ab7881199653d94afc8b50343f9cf2878f4d1fae9e09",
     "files": {
       "nanogpt_noise/__init__.py": "ede0cafbec03bdb34484b793b02294729b26139bd960f19f077659a1ac618b23",
       "nanogpt_noise/analyze.py": "2fd34bb1790191822ccc78960b472faaafccb9a4ce1a33294ba029e1fd556652",
@@ -45,7 +45,8 @@
       "nanogpt_noise/lm_head/model.py": "252832be41f4d76085f69623c667517114be7afd58f37a379e498a739ca36617",
       "nanogpt_noise/lm_head/protocol.py": "3571dab6f15d7ce4e51dcdf5188ed977059c536cac03636a9ed87b2e8ee4519a",
       "nanogpt_noise/lm_head/runner.py": "e8dcea12bbd917d502182719c978bbc3a30c9f86508da442ad101c8e371a8aab",
-      "nanogpt_noise/lm_head/train.py": "a672ece8df4f7c677dd7dee2d75bc32fc284e9824157a6a446c68c07e098e66a"
+      "nanogpt_noise/lm_head/telemetry.py": "9743e500b633164ef19c30b5584d987f2b861c113a48d9b5faf2d6d7087eeb48",
+      "nanogpt_noise/lm_head/train.py": "02055f71f9ad93af4bed2d9f8c9280dbf4cd7e1ee957caffbdbd081528d317b5"
     }
   },
   "execution": {
@@ -56,34 +57,43 @@
     "candidates_per_search": 8
   },
   "validation": {
-    "passed": 33,
-    "seconds": 61.435,
-    "command": "python -m unittest tests.test_lm_head tests.test_lm_head_micro tests.test_lm_head_shell tests.test_lm_head_h100 -v",
+    "passed": 45,
+    "seconds": 59.898,
+    "command": "python -m unittest tests.test_telemetry tests.test_lm_head_telemetry tests.test_lm_head tests.test_lm_head_micro tests.test_lm_head_shell tests.test_lm_head_h100 -v",
     "gpu_tasks_started": false,
     "server_accessed": false,
+    "real_cloud_verified": false,
     "details": "IMPLEMENTATION_VALIDATION.md"
   },
   "history": "history/README.md",
   "files": {
+    "LM_HEAD_RUN.md": {
+      "sha256": "02e08d35668534c28098eaddc038eaf7b06faee981856ac349a7a5cd552e993d",
+      "bytes": 12227
+    },
+    "README.md": {
+      "sha256": "48cd27b34ca7292bbbdc116751df6bff912bed54bf2ebbdc8fe6daf856a25781",
+      "bytes": 3950
+    },
     "docs/experiments/lm-head-only/.gitattributes": {
       "sha256": "5bc51a8a12c71d0c207b673707ed9743cb1a975d8a4fd0b5cdfa17fa1b595120",
       "bytes": 48
     },
     "docs/experiments/lm-head-only/IMPLEMENTATION_RECORD.md": {
-      "sha256": "2f82be193cb51b131cca21fd449f1214b46375eeebb09ce470c1e110eaf256c0",
-      "bytes": 794
+      "sha256": "8eb3823a36f602ab53090cad22ec43c1629a750b34f5bffee736b5d0c8b09be3",
+      "bytes": 1170
     },
     "docs/experiments/lm-head-only/IMPLEMENTATION_VALIDATION.md": {
-      "sha256": "ed189d04b17ddfacac667ed66fd1b612db498a7bc78e00954391ad7fd0fd3dd9",
-      "bytes": 683
+      "sha256": "ea482e14e2c5734e1e7d2f923e321a84ef6199e96856479ca3f126e075b66984",
+      "bytes": 1221
     },
     "docs/superpowers/plans/2026-11-15-lm-head-cleanup.md": {
       "sha256": "9a9a21cee8644026c2b84da72690ff6df4e7b2e6d8378969017853e817a9d5c0",
       "bytes": 1750
     },
-    "LM_HEAD_RUN.md": {
-      "sha256": "b1840cd998999dce57d21c2ec4a8eed6ddce212918e7a657cce07deb0d964168",
-      "bytes": 9388
+    "docs/superpowers/plans/2026-11-15-lm-head-swanlab.md": {
+      "sha256": "994eb3d9b96cbc121ca9e41eda80e38081a2614c4e61c75f4d4df854b029c704",
+      "bytes": 2296
     },
     "nanogpt_noise/lm_head/__init__.py": {
       "sha256": "8302238bf9f0bdcd19d7c1835c81124b44710e61832451cd73645b7e4d386313",
@@ -121,33 +131,33 @@
       "sha256": "e8dcea12bbd917d502182719c978bbc3a30c9f86508da442ad101c8e371a8aab",
       "bytes": 12859
     },
-    "nanogpt_noise/lm_head/train.py": {
-      "sha256": "a672ece8df4f7c677dd7dee2d75bc32fc284e9824157a6a446c68c07e098e66a",
-      "bytes": 22257
+    "nanogpt_noise/lm_head/telemetry.py": {
+      "sha256": "9743e500b633164ef19c30b5584d987f2b861c113a48d9b5faf2d6d7087eeb48",
+      "bytes": 1645
     },
-    "README.md": {
-      "sha256": "a6eb5ef3c388185daa1ac97dc9a7c6a43c84d2661b0fc377ddc59518d0b83f72",
-      "bytes": 3802
+    "nanogpt_noise/lm_head/train.py": {
+      "sha256": "02055f71f9ad93af4bed2d9f8c9280dbf4cd7e1ee957caffbdbd081528d317b5",
+      "bytes": 22610
     },
     "scripts/lm_head_h100.env.example": {
-      "sha256": "1808b5e6a9fd9ec59143e1e1dfb464a89f246496c6e5c1f34421e8cf8e274653",
-      "bytes": 436
+      "sha256": "f3eed21e5e99c484ded240e77fcce560b4c24375eef6443dc5832bfd43666c00",
+      "bytes": 697
     },
     "scripts/run_lm_head.sh": {
       "sha256": "c39c724117b982dd227cb3758716ea81abc513c77a4b92c5aa2d5f5d49d000ea",
       "bytes": 3211
     },
     "scripts/run_lm_head_h100.sh": {
-      "sha256": "9c24cf4943036ef53c553af74a4cbc9ab9337e21b465fcc84a1aca8cba29e6f1",
-      "bytes": 1807
+      "sha256": "69e7599bb16bcb407a5d9083d45f03f7fff8195659dff7905f24ee75a0313c01",
+      "bytes": 2665
     },
     "tests/test_lm_head.py": {
       "sha256": "17bcdf921a6dba2cc3c827a124baffc3204396d5d8341d2ef77cc7ba8060d54e",
       "bytes": 15770
     },
     "tests/test_lm_head_h100.py": {
-      "sha256": "2c2c2b2ef663fdcfeba80ca2694e9bad90090b971a13557949326921a7ede370",
-      "bytes": 4342
+      "sha256": "1513653d7f30a43610e2285ebc598065bc733b6a42b87021c7b9d357536014dd",
+      "bytes": 6288
     },
     "tests/test_lm_head_micro.py": {
       "sha256": "c73d5cb04f40b636ad86e7f10b045513f2eaf0373b6a26de5afbe5979d2cf979",
@@ -156,6 +166,19 @@
     "tests/test_lm_head_shell.py": {
       "sha256": "306118c497998596a130b10e3a9e550eb7f61a0b05d27240c0f35e2d7087d4ea",
       "bytes": 3979
+    },
+    "tests/test_lm_head_telemetry.py": {
+      "sha256": "647efa9ea7e544ee84448528ed632e7182648c02a3d3e1fb46ee9fbbac31606a",
+      "bytes": 5527
     }
+  },
+  "swanlab": {
+    "h100_default_enabled": true,
+    "default_project": "nanogpt-lm-head",
+    "sdk_install_version": "0.10.5",
+    "api_key_source": "task_environment",
+    "cache": "LH_RUN_ROOT/swanlab",
+    "upload_failure": "local_training_continues",
+    "cloud_acceptance": "verify_four_optimizer_smoke_metrics_in_dashboard"
   }
 }
