@@ -6,7 +6,7 @@
 
 **正式执行固定 MICRO_BATCH=16**，单卡累积 32 次，G/T/K 使用同一布局。H100 默认开启 SwanLab，项目名 nanogpt-lm-head；在平台任务环境配置 SWANLAB_API_KEY，先通过 smoke 并确认网页收到指标。
 
-**H100 启动只看 [LM_HEAD_RUN.md](LM_HEAD_RUN.md)**：包含固定版本下载、共同环境文件、smoke、formal（clean）、grid、恢复和正式 K 准备命令。G/T 可先运行；K 需要通过正式验收。
+**开始运行请按 [H100 操作手册](LM_HEAD_RUN.md) 逐步执行**：准备 → G → T → K → 查看结果。每步给出命令、继续条件和异常处理；指标字段、产物路径与扩样细节见[参考页](LM_HEAD_REFERENCE.md)。
 
 ## 从这里开始
 

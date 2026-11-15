@@ -68,12 +68,12 @@
   "history": "history/README.md",
   "files": {
     "LM_HEAD_RUN.md": {
-      "sha256": "02e08d35668534c28098eaddc038eaf7b06faee981856ac349a7a5cd552e993d",
-      "bytes": 12227
+      "sha256": "3a3304caa3b1f111ceda0ec5347a2a11eb6551e1dc5e9180877e78491b94e3ba",
+      "bytes": 7907
     },
     "README.md": {
-      "sha256": "48cd27b34ca7292bbbdc116751df6bff912bed54bf2ebbdc8fe6daf856a25781",
-      "bytes": 3950
+      "sha256": "8d2c71305e657a007fe00189046ce7f50ed2a41f0b9cdb895edcf1a42d5dae38",
+      "bytes": 3979
     },
     "docs/experiments/lm-head-only/.gitattributes": {
       "sha256": "5bc51a8a12c71d0c207b673707ed9743cb1a975d8a4fd0b5cdfa17fa1b595120",
@@ -170,6 +170,10 @@
     "tests/test_lm_head_telemetry.py": {
       "sha256": "647efa9ea7e544ee84448528ed632e7182648c02a3d3e1fb46ee9fbbac31606a",
       "bytes": 5527
+    },
+    "LM_HEAD_REFERENCE.md": {
+      "sha256": "7ad20b43dd1ceb0e80c4b7f074b666d7efa2d6e4dab87cfad8f4095f4aa9cd10",
+      "bytes": 5964
     }
   },
   "swanlab": {
@@ -180,5 +184,12 @@
     "cache": "LH_RUN_ROOT/swanlab",
     "upload_failure": "local_training_continues",
     "cloud_acceptance": "verify_four_optimizer_smoke_metrics_in_dashboard"
+  },
+  "documentation_revision": {
+    "kind": "sequential_operator_manual",
+    "compatible_code_tag": "lm-head-h100-m16-20261115-v3",
+    "entry": "LM_HEAD_RUN.md",
+    "reference": "LM_HEAD_REFERENCE.md",
+    "training_code_changed": false
   }
 }
