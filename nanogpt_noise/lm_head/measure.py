@@ -11,7 +11,7 @@ from ..data import verify, batch
 from ..input_bundle import verify_bundle
 from ..model import Shape
 from .model import HeadGPT
-from .protocol import VERSION, Budget, code_identity, require_current_input, DEFAULT_MICRO
+from .protocol import VERSION, Budget, code_identity, require_current_input, DEFAULT_MICRO, require_micro
 from .curvature import (probabilities, gradient, trace, hessian_block,
                         statistics_block, sample_blocks, block_metrics,
                         inclusion_moments)
@@ -68,6 +68,7 @@ def _statistics(b, pbar, t, n):
 
 def measure(input_root, output, mode='fit', *, tokens=32768, count=None,
             fit_dir=None, checkpoint=None, chunk_tokens=64, micro=DEFAULT_MICRO, test=False):
+    require_micro(micro,test)
     started = time.monotonic()
     count = (2 if checkpoint else 5) if count is None else count
     root, output = Path(input_root).resolve(), Path(output).resolve()

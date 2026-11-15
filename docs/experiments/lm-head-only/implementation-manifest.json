@@ -1,16 +1,18 @@
 {
   "schema": 1,
   "design": "LH-QP-20261114-draft2",
-  "status": "h100_micro16_launch_ready_hardware_acceptance_pending",
+  "status": "micro16_only_h100_smoke_pending",
   "branch": "design/lm-head-only-20261114",
+  "release_tag": "lm-head-h100-m16-20261115-v2",
   "base_commit": "bb3cf72e1113d0e9ceb903515772bfb1d1161df9",
+  "previous_implementation_commit": "55d51aac30201ff1beac28c500c8c99033962181",
   "source": {
     "workspace_relative_path": "VSCode下载/New/nanogpt_experiment_design.md",
-    "section": "14.16–14.21",
-    "sha256": "40b961e5282d7631b2daf9bc92282b0e13ded1d923c57fcf568bcd84bfb902ac"
+    "section": "14.16–14.22",
+    "sha256": "1ac594af20515805119a194223f9d10608f62337d84977450f192381e143f14c"
   },
   "code": {
-    "sha256": "96a26c198b744c0de2fcff34855ae33865c6a6f67e046aacbc101cfa64ae4b7c",
+    "sha256": "70e4d1525e5032378d47be1f1348ec1267a984a43c04afa470dcb1024c2a96c0",
     "files": {
       "nanogpt_noise/__init__.py": "ede0cafbec03bdb34484b793b02294729b26139bd960f19f077659a1ac618b23",
       "nanogpt_noise/analyze.py": "2fd34bb1790191822ccc78960b472faaafccb9a4ce1a33294ba029e1fd556652",
@@ -35,50 +37,61 @@
       "nanogpt_noise/train.py": "45e2a95855a6ee571d8530cc97b6e910c84f8f40280701d00e5efa74434439ee",
       "docs/nanogpt_experiment_design.md": "37b7f25a71e7c230bb5c95b8b48fcfdebff69e54eb4bcd957549a5e5f2213cf7",
       "nanogpt_noise/lm_head/__init__.py": "8302238bf9f0bdcd19d7c1835c81124b44710e61832451cd73645b7e4d386313",
-      "nanogpt_noise/lm_head/__main__.py": "0534718e2d4136c70b3043e2b8451ee5526ff0c176ec8cc4cd33c8670f5e78b8",
+      "nanogpt_noise/lm_head/__main__.py": "d57a419b6136377043c123644c2dc1968add2dfb41d2940a4dce35962afad73a",
       "nanogpt_noise/lm_head/analyze.py": "e4bdb09253180fd56be1255eff4a2c4cb20091e4c7f36e6a995f396463845b70",
-      "nanogpt_noise/lm_head/benchmark.py": "aac99fbbb1cf514a512e066ce565e25402b716b41c3421eeb6fb07f3e936fe39",
       "nanogpt_noise/lm_head/curvature.py": "33ea0301b75b6e1e0794105b57b1bff34a601714379387dad7fd923ad9c6d83f",
       "nanogpt_noise/lm_head/diagnostics.py": "b95e2f4376bf014d37ad775d775687cb2b4a58ef111d921a4b21e48d44d0ddb2",
-      "nanogpt_noise/lm_head/measure.py": "29fb4e66e707754dc062aacde1df1d485cd9a0bf0de5a77842b3b4cc45d4a449",
+      "nanogpt_noise/lm_head/measure.py": "de617213d6e762f18fbbe8b918fa8b50c8f7be2032a1bd58d54d583f7bb466d3",
       "nanogpt_noise/lm_head/model.py": "252832be41f4d76085f69623c667517114be7afd58f37a379e498a739ca36617",
-      "nanogpt_noise/lm_head/protocol.py": "a816a75452f9d07d5c0ecb0f004f34964e49f403cd63e7ba5c355e4c3164403c",
-      "nanogpt_noise/lm_head/runner.py": "7d1fcb4d4f59b0dc7231fcf7059cb4631ffbcda9f1cda1943b7f5e17717c9bd5",
-      "nanogpt_noise/lm_head/train.py": "0f39689915c8e0c4a8dea4e80251f87ae6a671b6dca5f93c46063f2328447fc1"
+      "nanogpt_noise/lm_head/protocol.py": "3571dab6f15d7ce4e51dcdf5188ed977059c536cac03636a9ed87b2e8ee4519a",
+      "nanogpt_noise/lm_head/runner.py": "e8dcea12bbd917d502182719c978bbc3a30c9f86508da442ad101c8e371a8aab",
+      "nanogpt_noise/lm_head/train.py": "a672ece8df4f7c677dd7dee2d75bc32fc284e9824157a6a446c68c07e098e66a"
     }
   },
-  "validation": {
-    "collected": 154,
-    "unique_passed": 147,
-    "skipped_posix": 7,
-    "lm_head_python": 20,
-    "lm_head_shell": 5,
-    "added_micro_tests": 9,
-    "full_suite_seconds": 314.299,
-    "formal_training_started": false,
-    "server_accessed": false,
-    "details": "micro-batch-validation.json"
+  "execution": {
+    "micro": 16,
+    "accumulations": 32,
+    "step_tokens": 524288,
+    "steps": 3815,
+    "candidates_per_search": 8
   },
+  "validation": {
+    "passed": 33,
+    "seconds": 61.435,
+    "command": "python -m unittest tests.test_lm_head tests.test_lm_head_micro tests.test_lm_head_shell tests.test_lm_head_h100 -v",
+    "gpu_tasks_started": false,
+    "server_accessed": false,
+    "details": "IMPLEMENTATION_VALIDATION.md"
+  },
+  "history": "history/README.md",
   "files": {
+    "docs/experiments/lm-head-only/.gitattributes": {
+      "sha256": "5bc51a8a12c71d0c207b673707ed9743cb1a975d8a4fd0b5cdfa17fa1b595120",
+      "bytes": 48
+    },
     "docs/experiments/lm-head-only/IMPLEMENTATION_RECORD.md": {
-      "sha256": "6490eb39149b5dfbf441675f38bf6e7ffa5afa67f1c52564583fff8a8e52e909",
-      "bytes": 7412
+      "sha256": "2f82be193cb51b131cca21fd449f1214b46375eeebb09ce470c1e110eaf256c0",
+      "bytes": 794
     },
     "docs/experiments/lm-head-only/IMPLEMENTATION_VALIDATION.md": {
-      "sha256": "2173a0093b38aa6189181ef792edb9c4b5281923c4a053ed91ebfc419c34e39d",
-      "bytes": 6175
+      "sha256": "ed189d04b17ddfacac667ed66fd1b612db498a7bc78e00954391ad7fd0fd3dd9",
+      "bytes": 683
+    },
+    "docs/superpowers/plans/2026-11-15-lm-head-cleanup.md": {
+      "sha256": "9a9a21cee8644026c2b84da72690ff6df4e7b2e6d8378969017853e817a9d5c0",
+      "bytes": 1750
     },
     "LM_HEAD_RUN.md": {
-      "sha256": "f12a6cea4683e40bb9f2393acd303c730093dedde08cc846ccc156c55cb7959a",
-      "bytes": 9840
+      "sha256": "b1840cd998999dce57d21c2ec4a8eed6ddce212918e7a657cce07deb0d964168",
+      "bytes": 9388
     },
     "nanogpt_noise/lm_head/__init__.py": {
       "sha256": "8302238bf9f0bdcd19d7c1835c81124b44710e61832451cd73645b7e4d386313",
       "bytes": 74
     },
     "nanogpt_noise/lm_head/__main__.py": {
-      "sha256": "0534718e2d4136c70b3043e2b8451ee5526ff0c176ec8cc4cd33c8670f5e78b8",
-      "bytes": 5824
+      "sha256": "d57a419b6136377043c123644c2dc1968add2dfb41d2940a4dce35962afad73a",
+      "bytes": 5925
     },
     "nanogpt_noise/lm_head/analyze.py": {
       "sha256": "e4bdb09253180fd56be1255eff4a2c4cb20091e4c7f36e6a995f396463845b70",
@@ -93,161 +106,56 @@
       "bytes": 4527
     },
     "nanogpt_noise/lm_head/measure.py": {
-      "sha256": "29fb4e66e707754dc062aacde1df1d485cd9a0bf0de5a77842b3b4cc45d4a449",
-      "bytes": 16886
+      "sha256": "de617213d6e762f18fbbe8b918fa8b50c8f7be2032a1bd58d54d583f7bb466d3",
+      "bytes": 16931
     },
     "nanogpt_noise/lm_head/model.py": {
       "sha256": "252832be41f4d76085f69623c667517114be7afd58f37a379e498a739ca36617",
       "bytes": 3979
     },
     "nanogpt_noise/lm_head/protocol.py": {
-      "sha256": "a816a75452f9d07d5c0ecb0f004f34964e49f403cd63e7ba5c355e4c3164403c",
-      "bytes": 1643
+      "sha256": "3571dab6f15d7ce4e51dcdf5188ed977059c536cac03636a9ed87b2e8ee4519a",
+      "bytes": 1826
     },
     "nanogpt_noise/lm_head/runner.py": {
-      "sha256": "7d1fcb4d4f59b0dc7231fcf7059cb4631ffbcda9f1cda1943b7f5e17717c9bd5",
-      "bytes": 12797
+      "sha256": "e8dcea12bbd917d502182719c978bbc3a30c9f86508da442ad101c8e371a8aab",
+      "bytes": 12859
     },
     "nanogpt_noise/lm_head/train.py": {
-      "sha256": "0f39689915c8e0c4a8dea4e80251f87ae6a671b6dca5f93c46063f2328447fc1",
-      "bytes": 23008
+      "sha256": "a672ece8df4f7c677dd7dee2d75bc32fc284e9824157a6a446c68c07e098e66a",
+      "bytes": 22257
     },
     "README.md": {
-      "sha256": "43f20392b08c672cec75e4156d6738e37d2b7387250b6934a7ed5d95fcee8c9f",
-      "bytes": 4320
+      "sha256": "a6eb5ef3c388185daa1ac97dc9a7c6a43c84d2661b0fc377ddc59518d0b83f72",
+      "bytes": 3802
+    },
+    "scripts/lm_head_h100.env.example": {
+      "sha256": "1808b5e6a9fd9ec59143e1e1dfb464a89f246496c6e5c1f34421e8cf8e274653",
+      "bytes": 436
     },
     "scripts/run_lm_head.sh": {
-      "sha256": "1bed0ddc52cbe1f99a8a89c029dd0d08e36e3c2c6ad77821c2d73b517217ce3e",
-      "bytes": 3103
+      "sha256": "c39c724117b982dd227cb3758716ea81abc513c77a4b92c5aa2d5f5d49d000ea",
+      "bytes": 3211
+    },
+    "scripts/run_lm_head_h100.sh": {
+      "sha256": "9c24cf4943036ef53c553af74a4cbc9ab9337e21b465fcc84a1aca8cba29e6f1",
+      "bytes": 1807
     },
     "tests/test_lm_head.py": {
       "sha256": "17bcdf921a6dba2cc3c827a124baffc3204396d5d8341d2ef77cc7ba8060d54e",
       "bytes": 15770
     },
-    "tests/test_lm_head_shell.py": {
-      "sha256": "3d03fa012615576eac614e3ec6bb08a4c52843da9c65884c372ab14a9ef6df18",
-      "bytes": 3692
-    },
-    "tests/test_lm_head_micro.py": {
-      "sha256": "554a700d52ca40739e4aa1fe939e51dd54ebeda75ad4b66170767139740a0dfa",
-      "bytes": 11683
-    },
-    "docs/superpowers/plans/2026-11-14-lm-head-micro-batch.md": {
-      "sha256": "2127a476f4bc54b7f074378bf4f1cc6df36c3641bad6c12fb73252473b331959",
-      "bytes": 2742
-    },
-    "docs/experiments/lm-head-only/micro-batch-validation.json": {
-      "sha256": "9a613ddce9025e2673b7a02614aa14d547db48b7dde06c3d1e50c09de491def5",
-      "bytes": 1333
-    },
-    "docs/experiments/lm-head-only/.gitattributes": {
-      "sha256": "987721435fad51fcc45bd8e7ccf346b994ccac0c68ae71757b3c5fbbce7f2019",
-      "bytes": 314
-    },
-    "scripts/select_lm_head_micro.py": {
-      "sha256": "bb5a8cfc3a033d0add0045df42daaa14d2c6dfb352026c7bddbde372b4bb48b1",
-      "bytes": 16232
-    },
-    "scripts/select_lm_head_micro.sh": {
-      "sha256": "23a7f7c6050c6b1e4805730dabc5cf80fdefb66d552c9f46ef58474b1daa1b4d",
-      "bytes": 173
-    },
-    "tests/test_lm_head_selection.py": {
-      "sha256": "906cd5e42e73eec122c2d9a9212f3f169d63c86f69b8827153a14e4ee8163312",
-      "bytes": 8688
-    },
-    "docs/experiments/lm-head-only/RTX_SELECTION_RECORD.md": {
-      "sha256": "4153f6b8d1f8de4b8444a1a7a57821650a4d461b1de707e841d625828485390f",
-      "bytes": 7520
-    },
-    "docs/superpowers/plans/2026-11-15-rtx-micro-selection.md": {
-      "sha256": "dec49d01c667cbf6aa38d524759b0defce584963db8598161ee9f1e821cba62f",
-      "bytes": 4244
-    },
-    "docs/experiments/lm-head-only/rtx-selection-manifest.json": {
-      "sha256": "e42e93e7e509b754fcb076f0a4a44dce016f6981b4638dd951f47332498e5433",
-      "bytes": 2073
-    },
-    "nanogpt_noise/lm_head/benchmark.py": {
-      "sha256": "aac99fbbb1cf514a512e066ce565e25402b716b41c3421eeb6fb07f3e936fe39",
-      "bytes": 4772
-    },
-    "scripts/benchmark_lm_head.py": {
-      "sha256": "ba81a512d7ae408552cb80d21d7ca86caa6a2b0b96242ad3d62d6deae774f600",
-      "bytes": 2480
-    },
-    "scripts/run_lm_head_rtx_benchmark.sh": {
-      "sha256": "238e4488d279ac3e2232e4a7997d8c7f6c4da4c85a3c2d2327357dd7529f842c",
-      "bytes": 794
-    },
-    "tests/test_lm_head_benchmark.py": {
-      "sha256": "5ac5b37e7f31afb92e6d530edacd8b4ec745194e5e112567a21cc766b4392204",
-      "bytes": 2155
-    },
-    "docs/superpowers/plans/2026-11-15-legacy-input-benchmark.md": {
-      "sha256": "070f6bce60c576e1c445ec314baac427c60de16537eb57d6063d0941424f12bf",
-      "bytes": 1700
-    },
-    "docs/experiments/lm-head-only/legacy-benchmark-manifest.json": {
-      "sha256": "c3664416176cd6de4663e964f906f8588618671a776b2d369353483713dc80d5",
-      "bytes": 5672
-    },
-    "docs/experiments/lm-head-only/rtx-benchmark-result.json": {
-      "sha256": "4569538d7a97962dfbcd5d4634f3c5294cf50e9a4a49677f7f40338c2a19647a",
-      "bytes": 1661
-    },
-    ".gitattributes": {
-      "sha256": "73e8ec33c6378cffef1e5cadfb2d777e9df4d0374aed47f85b82a8a702540630",
-      "bytes": 125
-    },
-    "scripts/run_lm_head_h100.sh": {
-      "sha256": "895997bf449b75e6bf7514462363dc8ecfb66f6fe337adef2f9e3cbc109681af",
-      "bytes": 1836
-    },
-    "scripts/lm_head_h100.env.example": {
-      "sha256": "1afd33dcd69136233fbfd644ad71d8e52cf94b8e77e8dad85796b52a304c6f3d",
-      "bytes": 456
-    },
     "tests/test_lm_head_h100.py": {
       "sha256": "2c2c2b2ef663fdcfeba80ca2694e9bad90090b971a13557949326921a7ede370",
       "bytes": 4342
     },
-    "docs/experiments/lm-head-only/h100-micro-decision.json": {
-      "sha256": "36b08351d962af08744d217b9e0dc3a3b06b69f2e1ec3bfdbd6162843d6032ac",
-      "bytes": 947
+    "tests/test_lm_head_micro.py": {
+      "sha256": "c73d5cb04f40b636ad86e7f10b045513f2eaf0373b6a26de5afbe5979d2cf979",
+      "bytes": 12453
     },
-    "docs/superpowers/plans/2026-11-15-h100-micro16.md": {
-      "sha256": "5f279106c9fac539b5b3100089546e526e2dc9940eb1786078649ed41c355221",
-      "bytes": 2795
-    },
-    "docs/experiments/lm-head-only/h100-launch-validation.json": {
-      "sha256": "ee1ceb5e970ae2e56a0c6d6daefe078c741b30ca0db0273a97c01245d6ce879e",
-      "bytes": 2426
+    "tests/test_lm_head_shell.py": {
+      "sha256": "306118c497998596a130b10e3a9e550eb7f61a0b05d27240c0f35e2d7087d4ea",
+      "bytes": 3979
     }
-  },
-  "runtime_revision": "h100-final-micro16-20261115",
-  "previous_implementation_commit": "f8c04bad0b6113dc5074b38c8d3eb38b4dd1166d",
-  "default_micro": 16,
-  "change_guide": {
-    "workspace_relative_path": "VSCode下载/New/micro_batch_adjustment_guide.md",
-    "sha256": "72cbca788e48c5428dc3d03f2bf9948cb567e90f20baf8a375a386f6d2a532fb"
-  },
-  "rtx_selection": {
-    "manifest": "rtx-selection-manifest.json",
-    "server_accessed": true,
-    "selection_started": true,
-    "selection_completed": true,
-    "selected_micro": 16,
-    "result": "rtx-benchmark-result.json",
-    "selected_by": "user_final_decision",
-    "benchmark_recommendation_micro": 32
-  },
-  "legacy_benchmark": "legacy-benchmark-manifest.json",
-  "h100_launch": {
-    "decision": "h100-micro-decision.json",
-    "validation": "h100-launch-validation.json",
-    "release_tag": "lm-head-h100-m16-20261115",
-    "selected_micro": 16
-  },
-  "legacy_benchmark_snapshot_commit": "43d8484c65b956cd93406938b2f4416b1f36e6c8"
+  }
 }

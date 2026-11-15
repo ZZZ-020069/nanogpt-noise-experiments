@@ -29,6 +29,10 @@ esac
 OBJECTIVE="${OBJECTIVE:-G}"
 GPUS="${GPUS:-0}"
 MICRO_BATCH="${MICRO_BATCH:-16}"
+if [[ "$MICRO_BATCH" != 16 ]]; then
+  printf 'LM Head execution requires MICRO_BATCH=16.\n' >&2
+  exit 2
+fi
 args=(--input-root "$INPUT_ROOT" --run-root "$LH_RUN_ROOT"
       --objective "$OBJECTIVE" --micro-batch "$MICRO_BATCH")
 if [[ "$OBJECTIVE" == K ]]; then

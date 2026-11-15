@@ -58,13 +58,19 @@ class HeadShell(unittest.TestCase):
         self.assertIn('ARG=<--blocks>\nARG=<2>',later.stdout)
         self.assertIn('ARG=<--fit-dir>\nARG=</fit>',later.stdout)
 
-    def test_micro_default_and_explicit_32_across_launch_actions(self):
+    def test_micro16_only_across_launch_actions(self):
         for action,extra in (
                 ('check',{}),('smoke',{}),('clean',{}),('grid',{}),('plan',{}),
                 ('resume',{'LH_PHASE':'clean'}),('curvature-fit',{}),
                 ('curvature-check',{'LH_FIT_DIR':'/fit'})):
-            for value,expected in (('',16),('32',32)):
+            for value,expected in (('',16),('16',16)):
                 with self.subTest(action=action,micro=expected):
                     result=self.invoke(action,MICRO_BATCH=value,**extra)
                     self.assertEqual(result.returncode,0,result.stderr)
                     self.assertIn(f'ARG=<--micro-batch>\nARG=<{expected}>',result.stdout)
+
+    def test_nonstandard_micro_rejected_by_generic_launcher(self):
+        for action in ('check','smoke','clean','grid','plan','curvature-fit'):
+            result=self.invoke(action,MICRO_BATCH='8')
+            self.assertEqual(result.returncode,2)
+            self.assertNotIn('ARG=<',result.stdout)

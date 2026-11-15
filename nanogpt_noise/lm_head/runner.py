@@ -17,7 +17,7 @@ from ..pool import run_pool
 from ..search import propose, summarize, winner
 from ..storage import compact_steps, retain_winner_checkpoint
 from .protocol import (configuration, VERSION, CENTERS, code_identity, require_current_input,
-                       DEFAULT_MICRO, Budget, bound_micro)
+                       DEFAULT_MICRO, Budget, bound_micro, require_micro)
 from .train import run, Runtime
 
 
@@ -34,13 +34,14 @@ def input_identity(root, test=False):
 
 def require_run_micro(root, micro):
     identity = read_json(Path(root)/'lm_head_run.json')
+    require_micro(micro,identity.get('test',False))
     if bound_micro(identity) != micro:
         raise ValueError('micro differs from the locked run root; G/T/K must use one micro')
     return identity
 
 
 def bind_root(root, input_root, ident, test=False, *, micro=DEFAULT_MICRO):
-    bound_micro(dict(micro=micro))
+    require_micro(micro,test)
     Budget(**ident['budget']).accumulations(1,micro)
     root, inputs = Path(root).resolve(), Path(input_root).resolve()
     if root == inputs or inputs in root.parents or root in inputs.parents:

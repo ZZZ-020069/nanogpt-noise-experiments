@@ -15,7 +15,7 @@ Actions: check plan smoke smoke-all formal clean grid resume pause status report
 formal = clean (four optimizers, eight LR candidates each, 3815 steps each).
 Required: INPUT_ROOT (registered v1.8 inputs), LH_RUN_ROOT (fresh formal output).
 Options: PYTHON=python, GPUS=0,1,2,3, OBJECTIVE=G|T|K (default G).
-K and smoke-all require formal K_STATISTICS; empirical K-benchmark.pt is rejected.
+K and smoke-all require formal approved K_STATISTICS.
 resume requires LH_PHASE=clean|grid. MICRO_BATCH must be unset or exactly 16.
 Smoke never starts formal training. Grid is a separate explicit action.
 See LM_HEAD_RUN.md for the complete H100 commands.

@@ -4,11 +4,9 @@
 
 本分支发布“冻结随机初始化的 backbone，只训练完整 LM Head”的实验方案，并研究能否用 Hessian 信息构造二次函数，复现优化器排序。现已提供独立的 G/T/K 训练代码、Hessian 子块测量和启动脚本。实现检查与目标 GPU 验收状态见 [验证记录](docs/experiments/lm-head-only/IMPLEMENTATION_VALIDATION.md)。
 
-**最终统一使用 MICRO_BATCH=16。** RTX 两档的 24 个候选全部通过，32 只快约 1%，峰值 allocated 却接近两倍；用户因此选择 16。H100 入口 scripts/run_lm_head_h100.sh 固定这一档位，拒绝残留的 32。
+**正式执行固定 MICRO_BATCH=16**，单卡累积 32 次，G/T/K 使用同一布局。
 
-**H100 只看 [LM_HEAD_RUN.md](LM_HEAD_RUN.md)**：包含固定标签 lm-head-h100-m16-20261115 的下载、共同环境文件、smoke、formal（clean）、grid、恢复和正式 K 准备命令。G/T 可先运行；K 仍需正式验收。当前尚未在 H100 启动任务。
-
-[RTX 原始实测](docs/experiments/lm-head-only/RTX_SELECTION_RECORD.md)保留自动推荐 32 的历史输出；[最终档位决策](docs/experiments/lm-head-only/h100-micro-decision.json)记录用户确定的 16。旧输入与经验 K 仅用于硬件测速，不进入正式实验。
+**H100 启动只看 [LM_HEAD_RUN.md](LM_HEAD_RUN.md)**：包含固定版本下载、共同环境文件、smoke、formal（clean）、grid、恢复和正式 K 准备命令。G/T 可先运行；K 需要通过正式验收。
 
 ## 从这里开始
 
@@ -35,7 +33,7 @@ Head 与输入 embedding 必须同值解除权重共享，保证 embedding 始�
 | 模型与数据 | 保持架构、语料、初始化数值和数据窗口 |
 | 预算与搜索 | 每候选约 2B tokens / 3815 步，五初始加三追加学习率 |
 | Batch 与调度 | 全局 524288 tokens，原 warmup/cosine |
-| micro 执行布局 | 默认 16，单卡累积 32 次；micro=32 时累积 16 次；G/T/K 锁定同一档 |
+| micro 执行布局 | 固定 16，单卡累积 32 次；G/T/K 使用相同布局 |
 | 噪声与随机性 | 原 35 点网格、噪声公式、单 seed |
 | 精度与配方 | BF16 autocast、FP32 主参数和梯度、原超参数、无裁剪 |
 | 主要评价 | 完整预算终点 validation loss 选学习率和排名 |

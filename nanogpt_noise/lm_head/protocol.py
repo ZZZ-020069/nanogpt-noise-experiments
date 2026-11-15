@@ -19,6 +19,12 @@ def bound_micro(identity):
     return value
 
 
+def require_micro(micro, test=False):
+    bound_micro(dict(micro=micro))
+    if not test and micro != DEFAULT_MICRO:
+        raise ValueError('LM Head execution requires micro=16')
+
+
 def configuration(objective, optimizer, node, exponent):
     if objective not in OBJECTIVES:
         raise ValueError('objective must be G, T or K')

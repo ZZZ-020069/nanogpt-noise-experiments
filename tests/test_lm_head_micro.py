@@ -35,18 +35,18 @@ class MicroLayout(unittest.TestCase):
     def test_default_and_global_budget_all_entrypoints(self):
         for function in (run,run_node,measure,bind_root):
             self.assertEqual(inspect.signature(function).parameters['micro'].default,16)
-        for micro,accumulation in ((16,32),(32,16)):
-            self.assertEqual(Budget().accumulations(1,micro),accumulation)
-            stream=io.StringIO()
-            with contextlib.redirect_stdout(stream):
-                main(['run','--input-root','missing','--run-root',str(self.base/'absent'),
-                      '--dry-run','--micro-batch',str(micro)])
-            plan=json.loads(stream.getvalue())
-            self.assertEqual(plan['micro'],micro)
-            self.assertEqual(plan['accumulations'],accumulation)
-            self.assertEqual(plan['step_tokens'],524288)
-            self.assertEqual(plan['steps'],3815)
-            self.assertFalse((self.base/'absent').exists())
+        micro,accumulation=16,32
+        self.assertEqual(Budget().accumulations(1,micro),accumulation)
+        stream=io.StringIO()
+        with contextlib.redirect_stdout(stream):
+            main(['run','--input-root','missing','--run-root',str(self.base/'absent'),
+                  '--dry-run','--micro-batch',str(micro)])
+        plan=json.loads(stream.getvalue())
+        self.assertEqual(plan['micro'],micro)
+        self.assertEqual(plan['accumulations'],accumulation)
+        self.assertEqual(plan['step_tokens'],524288)
+        self.assertEqual(plan['steps'],3815)
+        self.assertFalse((self.base/'absent').exists())
         with patch('nanogpt_noise.lm_head.__main__.input_identity',return_value=self.ident), \
                 contextlib.redirect_stdout(io.StringIO()):
             main(['check','--input-root',str(self.inputs),'--run-root',str(self.base/'run')])
@@ -76,6 +76,20 @@ class MicroLayout(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'micro'):call()
             runtime.assert_not_called()
         self.assertEqual((root/'lm_head_run.json').read_bytes(),before)
+
+    def test_formal_micro_guard_precedes_gpu_and_input_work(self):
+        with patch('nanogpt_noise.lm_head.train.Runtime') as runtime, \
+             patch('nanogpt_noise.lm_head.__main__.input_identity') as inputs:
+            for call in (
+                lambda: run({},'missing','missing',self.base/'run',micro=8),
+                lambda: measure('missing',self.base/'curve',micro=8),
+                lambda: main(['run','--input-root','missing','--run-root','missing',
+                              '--micro-batch','8','--dry-run']),
+                lambda: main(['curvature','--input-root','missing','--output','missing','--micro-batch','8']),
+            ):
+                with self.assertRaisesRegex(ValueError,'micro=16'):call()
+            runtime.assert_not_called()
+            inputs.assert_not_called()
 
     def test_old_root_and_invalid_micro_rejected_without_migration(self):
         root=self.base/'run'
@@ -153,13 +167,13 @@ class MicroLayout(unittest.TestCase):
         expected=np.mean([np.mean(np.arange(i,i+2,dtype=float)**2) for i in range(200)])
         for objective in ('G','T','K'):
             model.objective=objective
-            for micro in (16,32):
+            for micro in (16,8):
                 values=evaluate(model,arrays,indices,budget,micro,Runtime(cpu=True))
                 self.assertAlmostEqual(values['val'],expected,places=10)
                 self.assertAlmostEqual(values['train_objective'],
                     expected+(0 if objective=='G' else 7.),places=10)
 
-    def test_fixed_16_full_batches_and_eval_tails_at_16_and_32(self):
+    def test_fixed_16_full_batches_and_eval_tails_with_reference_chunks(self):
         from nanogpt_noise.lm_head.diagnostics import fixed_gradient_probe
         class FixedFeatures(torch.nn.Module):
             def __init__(self):
@@ -178,7 +192,7 @@ class MicroLayout(unittest.TestCase):
         stats=dict(B=torch.eye(3,dtype=torch.float64))
         for mode in ('fit','check'):
             reports=[]
-            for micro in (16,32):
+            for micro in (16,8):
                 with contextlib.redirect_stdout(io.StringIO()):
                     reports.append(fixed_gradient_probe(model,self.base,indices,budget,
                         Runtime(cpu=True),micro,stats,mode,chunk_tokens=7))
@@ -189,13 +203,13 @@ class MicroLayout(unittest.TestCase):
                 self.assertAlmostEqual(first['random_direction_projection'],
                                        second['random_direction_projection'],places=12)
 
-    def test_curvature_features_and_blocks_at_16_and_32_with_tail(self):
+    def test_curvature_features_and_blocks_with_reference_chunks_with_tail(self):
         self.inputs.mkdir()
         data,artifacts=fixture(self.inputs,batch_size=512)
         data.rename(self.inputs/'openwebtext_subset')
         artifacts.rename(self.inputs/'frozen-artifacts')
         results=[]
-        for micro in (16,32):
+        for micro in (16,8):
             output=self.base/f'curvature-{micro}'
             with contextlib.redirect_stdout(io.StringIO()):
                 results.append(measure(self.inputs,output,tokens=192,chunk_tokens=7,
@@ -205,11 +219,11 @@ class MicroLayout(unittest.TestCase):
             self.assertEqual(len(identity['windows']),24)
         self.assertAlmostEqual(results[0]['trace'],results[1]['trace'],places=6)
         a=torch.load(self.base/'curvature-16/features.pt',weights_only=True)
-        b=torch.load(self.base/'curvature-32/features.pt',weights_only=True)
+        b=torch.load(self.base/'curvature-8/features.pt',weights_only=True)
         self.assertTrue(torch.equal(a['y'],b['y']))
         self.assertTrue(torch.allclose(a['h'],b['h'],atol=1e-6,rtol=1e-6))
         for index in range(10):
             a=torch.load(self.base/f'curvature-16/block-{index:02d}.pt',weights_only=True)
-            b=torch.load(self.base/f'curvature-32/block-{index:02d}.pt',weights_only=True)
+            b=torch.load(self.base/f'curvature-8/block-{index:02d}.pt',weights_only=True)
             self.assertEqual(a['definition'],b['definition'])
             self.assertTrue(torch.allclose(a['hessian'],b['hessian'],atol=1e-8,rtol=1e-6))

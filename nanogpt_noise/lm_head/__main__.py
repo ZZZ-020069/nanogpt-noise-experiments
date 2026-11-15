@@ -9,7 +9,7 @@ from .runner import (input_identity,bind_root,job_list,smoke,serve,worker,
 from .measure import measure
 from .measure import load_statistics
 from ..model import Shape
-from .protocol import Budget, DEFAULT_MICRO
+from .protocol import Budget, DEFAULT_MICRO, require_micro
 from .analyze import report as comparison_report
 
 
@@ -48,6 +48,8 @@ def main(argv=None):
     p.add_argument('--micro-batch',type=int,default=DEFAULT_MICRO)
     p.add_argument('--test',action='store_true')
     args=parser.parse_args(argv)
+    if hasattr(args,'micro_batch'):
+        require_micro(args.micro_batch,args.test)
     if args.command=='run' and args.dry_run:
         print(json.dumps(dict(objective=args.objective,phase=args.phase,
                               micro=args.micro_batch,accumulations=Budget().accumulations(1,args.micro_batch),
