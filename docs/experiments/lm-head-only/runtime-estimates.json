@@ -1,0 +1,196 @@
+{
+  "kind": "planning_scenarios_not_h100_measurements",
+  "date": "2026-11-15",
+  "micro": 16,
+  "devices": 4,
+  "source_kind": "RTX PRO 6000 old-input hardware benchmark",
+  "source_commit": "74af8db7575dd23ceda4e6e8a585fccc6dc1d36f",
+  "formal_steps": 3815,
+  "formal_evaluations": 21,
+  "smoke_steps": 32,
+  "smoke_evaluations": 2,
+  "candidates_per_optimizer": 8,
+  "remaining_grid_nodes_after_clean": 34,
+  "h100_elapsed_time_multiplier_assumption": [
+    0.5,
+    1.5
+  ],
+  "assumption_note": "Scheduling sensitivity range, not a measured hardware speed ratio or confidence interval. Excludes queue time, input preparation, scientific review, failures/restarts and curvature. All candidates assumed full budget.",
+  "curvature_estimate": null,
+  "curvature_reason": "No comparable full FP64 block/spectral/fixed-gradient measurement available.",
+  "observations": [
+    {
+      "objective": "G",
+      "optimizer": "adam",
+      "source": "timing-evidence/lm-head-rtx-20261115/evidence/micro-16/G/attempt-0000/smoke/G/adam/performance.json",
+      "sha256": "f44c878a82ad3a08f24b09bb3c428294c0d1f846c95a0bddbd1839dfffe0e17a",
+      "wall_seconds": 50.55451124499086,
+      "evaluation_seconds": 1.204237706027925,
+      "checkpoint_seconds": 7.344892244087532,
+      "non_eval_checkpoint_seconds_per_step": 1.3126681654648564,
+      "projected_candidate_seconds": 5097.59491572464
+    },
+    {
+      "objective": "G",
+      "optimizer": "adamw",
+      "source": "timing-evidence/lm-head-rtx-20261115/evidence/micro-16/G/attempt-0000/smoke/G/adamw/performance.json",
+      "sha256": "674bcc945e8ef2c008e63d3275ca4f22469be16eb9c9dd9d4a7c77e7cc64fc23",
+      "wall_seconds": 51.40844084601849,
+      "evaluation_seconds": 1.4433462979504839,
+      "checkpoint_seconds": 8.39199067291338,
+      "non_eval_checkpoint_seconds_per_step": 1.2991594960985822,
+      "projected_candidate_seconds": 5059.5645158101615
+    },
+    {
+      "objective": "G",
+      "optimizer": "muon",
+      "source": "timing-evidence/lm-head-rtx-20261115/evidence/micro-16/G/attempt-0000/smoke/G/muon/performance.json",
+      "sha256": "dc4bdd842dc188baf68873eb8427b8a4954076ef2d0a011f9a2f1cdd10504ca6",
+      "wall_seconds": 47.050303524010815,
+      "evaluation_seconds": 1.2363141590030864,
+      "checkpoint_seconds": 3.145374651066959,
+      "non_eval_checkpoint_seconds_per_step": 1.333394209810649,
+      "projected_candidate_seconds": 5132.906642933362
+    },
+    {
+      "objective": "G",
+      "optimizer": "sgd",
+      "source": "timing-evidence/lm-head-rtx-20261115/evidence/micro-16/G/attempt-0000/smoke/G/sgd/performance.json",
+      "sha256": "be6bf2b92d0316efe3f4ba2b7e0a223afc28e2a769694f9e3aaccaa821a500ba",
+      "wall_seconds": 46.20973491901532,
+      "evaluation_seconds": 1.2178624930093065,
+      "checkpoint_seconds": 3.2471409770660102,
+      "non_eval_checkpoint_seconds_per_step": 1.304522857779375,
+      "projected_candidate_seconds": 5023.637238864107
+    },
+    {
+      "objective": "T",
+      "optimizer": "adam",
+      "source": "timing-evidence/lm-head-rtx-20261115/evidence/micro-16/T/attempt-0000/smoke/T/adam/performance.json",
+      "sha256": "98d464d05b082ba02806b78223b9f063b977db927199d39e0242337e6b2f9d1d",
+      "wall_seconds": 145.9063181449892,
+      "evaluation_seconds": 3.9650484659941867,
+      "checkpoint_seconds": 7.780864681932144,
+      "non_eval_checkpoint_seconds_per_step": 4.192512656158215,
+      "projected_candidate_seconds": 16117.767871296815
+    },
+    {
+      "objective": "T",
+      "optimizer": "adamw",
+      "source": "timing-evidence/lm-head-rtx-20261115/evidence/micro-16/T/attempt-0000/smoke/T/adamw/performance.json",
+      "sha256": "5d03e90222a2238def5739f54d87af875186821d5c838832953e784f4f346929",
+      "wall_seconds": 146.13479120098054,
+      "evaluation_seconds": 4.238318901974708,
+      "checkpoint_seconds": 7.389818941941485,
+      "non_eval_checkpoint_seconds_per_step": 4.203332917408261,
+      "projected_candidate_seconds": 16157.810527273636
+    },
+    {
+      "objective": "T",
+      "optimizer": "muon",
+      "source": "timing-evidence/lm-head-rtx-20261115/evidence/micro-16/T/attempt-0000/smoke/T/muon/performance.json",
+      "sha256": "f9a3fe9bf8f2c88f6402b6cadec39de3db8647aab72430f61a43409de5d6635f",
+      "wall_seconds": 141.36464071902446,
+      "evaluation_seconds": 3.9736949899233878,
+      "checkpoint_seconds": 2.5404174859868363,
+      "non_eval_checkpoint_seconds_per_step": 4.21407900759732,
+      "projected_candidate_seconds": 16145.109594980833
+    },
+    {
+      "objective": "T",
+      "optimizer": "sgd",
+      "source": "timing-evidence/lm-head-rtx-20261115/evidence/micro-16/T/attempt-0000/smoke/T/sgd/performance.json",
+      "sha256": "a6ff80f9e387cdfebf6ccdda7c76d2bae3fbe50e4578475743239c16867ff3db",
+      "wall_seconds": 144.4666383949807,
+      "evaluation_seconds": 3.9698661661241204,
+      "checkpoint_seconds": 6.049642845056951,
+      "non_eval_checkpoint_seconds_per_step": 4.201472793243738,
+      "projected_candidate_seconds": 16133.823550842262
+    },
+    {
+      "objective": "K",
+      "optimizer": "adam",
+      "source": "timing-evidence/lm-head-rtx-20261115/evidence/micro-16/K/attempt-0000/smoke/K/adam/performance.json",
+      "sha256": "ade7913a38cf3d3fd7905119c76d6cc4fe3aba06f31469763c2a04850d7d04e9",
+      "wall_seconds": 85.38718080695253,
+      "evaluation_seconds": 2.967321099014953,
+      "checkpoint_seconds": 4.110691567067988,
+      "non_eval_checkpoint_seconds_per_step": 2.4471615044021746,
+      "projected_candidate_seconds": 9410.240272288167
+    },
+    {
+      "objective": "K",
+      "optimizer": "adamw",
+      "source": "timing-evidence/lm-head-rtx-20261115/evidence/micro-16/K/attempt-0000/smoke/K/adamw/performance.json",
+      "sha256": "b6e0f4991cb8eddf18add414477decd5e8ea12a5d67ccacf581991a508d12caf",
+      "wall_seconds": 87.18756334495265,
+      "evaluation_seconds": 3.2623662849655375,
+      "checkpoint_seconds": 4.7159739879425615,
+      "non_eval_checkpoint_seconds_per_step": 2.4752882210013922,
+      "projected_candidate_seconds": 9526.997135985846
+    },
+    {
+      "objective": "K",
+      "optimizer": "muon",
+      "source": "timing-evidence/lm-head-rtx-20261115/evidence/micro-16/K/attempt-0000/smoke/K/muon/performance.json",
+      "sha256": "04a285e9fa7bb4990a3c7d5ba955cd09a485ad4d67f8ccc5694730a920efbefe",
+      "wall_seconds": 85.74716409202665,
+      "evaluation_seconds": 2.97388471593149,
+      "checkpoint_seconds": 3.20019737794064,
+      "non_eval_checkpoint_seconds_per_step": 2.486658812442329,
+      "projected_candidate_seconds": 9551.431231453142
+    },
+    {
+      "objective": "K",
+      "optimizer": "sgd",
+      "source": "timing-evidence/lm-head-rtx-20261115/evidence/micro-16/K/attempt-0000/smoke/K/sgd/performance.json",
+      "sha256": "96536e8b2ae8aad700f9e44ad9c292c45d12e16b054b15c2153e0be378b9892e",
+      "wall_seconds": 84.99069621402305,
+      "evaluation_seconds": 2.9697609981521964,
+      "checkpoint_seconds": 4.240277664968744,
+      "non_eval_checkpoint_seconds_per_step": 2.430645548465691,
+      "projected_candidate_seconds": 9348.61817335938
+    }
+  ],
+  "projections": {
+    "G": {
+      "measured_four_optimizer_smoke_seconds": 195.2229905340355,
+      "rtx_rate_four_gpu_clean_hours": 11.406459206518582,
+      "rtx_rate_four_gpu_remaining_grid_days": 16.15915054256799,
+      "assumed_h100_clean_hours": [
+        5.703229603259291,
+        17.10968880977787
+      ],
+      "assumed_h100_remaining_grid_days": [
+        8.079575271283995,
+        24.238725813851985
+      ]
+    },
+    "T": {
+      "measured_four_optimizer_smoke_seconds": 577.8723884599749,
+      "rtx_rate_four_gpu_clean_hours": 35.90624561616364,
+      "rtx_rate_four_gpu_remaining_grid_days": 50.867181289565146,
+      "assumed_h100_clean_hours": [
+        17.95312280808182,
+        53.85936842424545
+      ],
+      "assumed_h100_remaining_grid_days": [
+        25.433590644782573,
+        76.30077193434772
+      ]
+    },
+    "K": {
+      "measured_four_optimizer_smoke_seconds": 343.3126044579549,
+      "rtx_rate_four_gpu_clean_hours": 21.225402736562536,
+      "rtx_rate_four_gpu_remaining_grid_days": 30.069320543463594,
+      "assumed_h100_clean_hours": [
+        10.612701368281268,
+        31.838104104843804
+      ],
+      "assumed_h100_remaining_grid_days": [
+        15.034660271731797,
+        45.10398081519539
+      ]
+    }
+  }
+}

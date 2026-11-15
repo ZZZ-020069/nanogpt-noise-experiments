@@ -8,8 +8,8 @@
   "previous_implementation_commit": "24dbc518c761796de775cb6d46caffa8755491c6",
   "source": {
     "workspace_relative_path": "VSCode下载/New/nanogpt_experiment_design.md",
-    "section": "14.16–14.23",
-    "sha256": "8c2f7d6b4fd05691b63a74e896e151d76a4aef82425a8f47f3b69f42c503a00f"
+    "section": "14.16–14.24",
+    "sha256": "650f96cd8e55022e0626d6aef2c70c4a9d2830b1ccc20aacab53d298f28bb609"
   },
   "code": {
     "sha256": "f2a7040f5fdb374ba767ab7881199653d94afc8b50343f9cf2878f4d1fae9e09",
@@ -68,8 +68,8 @@
   "history": "history/README.md",
   "files": {
     "LM_HEAD_RUN.md": {
-      "sha256": "ff083db9996a87fa7fa2351c3c5b88b59d17a1b7281f925fb2f9c3afb03b284f",
-      "bytes": 11589
+      "sha256": "ae5c0dc184a846ce2427b270e69d0827f629913aff78a6fbd82dc28a2715284c",
+      "bytes": 14744
     },
     "README.md": {
       "sha256": "8d2c71305e657a007fe00189046ce7f50ed2a41f0b9cdb895edcf1a42d5dae38",
@@ -172,8 +172,12 @@
       "bytes": 5527
     },
     "LM_HEAD_REFERENCE.md": {
-      "sha256": "88738f1e44b82b80e23ae0561ee19ef677e16e5ce8f0620540def4839c00bd0d",
-      "bytes": 6658
+      "sha256": "9d1e746711b05800ba8a15f41d28fdeb7e45dff373c105c24fa9507c326ddc20",
+      "bytes": 10553
+    },
+    "docs/experiments/lm-head-only/runtime-estimates.json": {
+      "sha256": "c5c0de0b72ed56cbdc77ca04ac57442d0ab57be431d9b715683dd38964cffc76",
+      "bytes": 8424
     }
   },
   "swanlab": {
@@ -192,6 +196,8 @@
     "reference": "LM_HEAD_REFERENCE.md",
     "training_code_changed": false,
     "bash_blocks": 25,
-    "explicit_resume_variants": 6
+    "explicit_resume_variants": 6,
+    "runtime_estimates": "docs/experiments/lm-head-only/runtime-estimates.json",
+    "h100_runtime_measured": false
   }
 }
