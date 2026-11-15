@@ -113,12 +113,15 @@ def evaluate(model, arrays, indices, budget, micro, rt):
 
 
 def run(config, data, artifacts, output, *, micro=DEFAULT_MICRO, runtime=None,
-        smoke_steps=None, test=False, pause_after=None, pause_file=None):
+        smoke_steps=None, test=False, pause_after=None, pause_file=None, benchmark=False):
+    if benchmark and (test or smoke_steps != 32):
+        raise ValueError('hardware benchmark is real-model, exactly 32 steps only')
     rt = runtime or Runtime(cpu=test)
     if config.get('statistics') and config['objective'] != 'K':
         raise ValueError('statistics artifact is only valid for K')
     output, data, artifacts = Path(output),Path(data),Path(artifacts)
     mode = 'test' if test else ('smoke' if smoke_steps is not None else 'formal')
+    if benchmark: mode = 'benchmark'
     if rt.world != 1:
         raise ValueError('Head runner uses independent single-GPU candidates; launch via worker pool')
     candidate_identity(config)
@@ -134,13 +137,17 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
     ident = verify(data,artifacts)
     if ident['tiny'] != (mode=='test'):
         raise ValueError('tiny fixtures cannot be used for real-model runs')
-    if mode != 'test':
+    if mode == 'benchmark':
+        from .benchmark import require_benchmark_input
+        require_benchmark_input(ident)
+    elif mode != 'test':
         verify_bundle(data.parent, data, artifacts)
         require_current_input(ident)
         expected = configuration(config['objective'], config['optimizer'], config['node'], config['exponent'])
         if any(config.get(key) != value for key, value in expected.items()):
             raise ValueError('candidate config does not match the current protocol')
     budget, shape = Budget(**ident['budget']),Shape(**ident['shape'])
+    if mode == 'benchmark': budget = Budget()
     accumulation = budget.accumulations(rt.world,micro)
     target = budget.steps if smoke_steps is None else smoke_steps
     if not 1<=target<=budget.steps:
@@ -150,6 +157,8 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
                      code=code_identity()['sha256'],world=rt.world,micro=micro,
                      device_type=rt.device.type,torch=str(torch.__version__),
                      cuda=torch.version.cuda,target_steps=target)
+    if mode == 'benchmark':
+        execution.update(benchmark_only=True,effective_budget=asdict(budget),source_budget=ident['budget'])
     identity = digest(execution)
     metadata_path = output/'metadata.json'
     if metadata_path.exists() and read_json(metadata_path)['run_id'] != identity:
@@ -166,8 +175,12 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
         raise ValueError('initial tensor identity mismatch')
     statistics = None
     if config['objective'] == 'K':
-        from .measure import load_statistics
-        statistics = load_statistics(config['statistics'], ident, shape, allow_test=(mode=='test'))
+        if mode == 'benchmark':
+            from .benchmark import load_benchmark_statistics
+            statistics = load_benchmark_statistics(config['statistics'], ident, shape)
+        else:
+            from .measure import load_statistics
+            statistics = load_statistics(config['statistics'], ident, shape, allow_test=(mode=='test'))
     model.activate_head(config['objective'], statistics)
     named = [(n,p) for n,p in model.named_parameters() if p.requires_grad]
     dimension = sum(p.numel() for _,p in named)
@@ -375,7 +388,7 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
                           f"loss={float(train_loss):.6f} lr={lr:.8g} "
                           f"elapsed={time.monotonic()-started:.1f}s", flush=True)
             if (rt.rank==0 and config['node']==0 and config['objective']=='G'
-                    and mode!='smoke' and step in (191,1908,3815,target)):
+                    and mode not in ('smoke','benchmark') and step in (191,1908,3815,target)):
                 save_checkpoint(output/'analysis'/f'head-{step:06d}.pt',
                                 dict(head=model.lm_head.weight.detach(), step=step,
                                      run_id=identity, input_id=ident['id'],
@@ -413,7 +426,7 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
     finally:
         if profiling:
             write_json(output/'performance.json',dict(
-                kind='CPU test' if mode=='test' else 'hardware smoke',
+                kind='CPU test' if mode=='test' else ('hardware benchmark' if mode=='benchmark' else 'hardware smoke'),
                 segment_start_step=segment_start,segment_end_step=step,
                 wall_seconds=time.monotonic()-started,timings=timings,
                 peak_allocated_bytes=torch.cuda.max_memory_allocated(rt.device)

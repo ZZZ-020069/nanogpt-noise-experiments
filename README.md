@@ -6,7 +6,7 @@
 
 LM Head 的训练和离线测量默认 **MICRO_BATCH=16**。先在双 RTX PRO 6000 上并行比较 16/32，覆盖 G/T/K 四优化器，再把选定档位交给 H100 做 smoke 与正式训练。全局 batch、预算和配对规则保持不变。双卡入口为 scripts/select_lm_head_micro.sh，完整命令见[启动说明](LM_HEAD_RUN.md#rtx-双卡选档分别测-16-和-32)。
 
-2026-11-15 已连接 RTX 并确认两卡空闲；现有输入是 v1.4，尚缺与 H100 last-k 相同的已登记 v1.8 输入及真实 K 验收产物，因此选档尚未开始。进度见 [RTX 选档记录](docs/experiments/lm-head-only/RTX_SELECTION_RECORD.md)。
+2026-11-15 用户允许 RTX 硬件测速沿用旧 v1.4 输入。新增 --benchmark-only：旧文件按原哈希读取，固定 32 步，K 使用独立经验统计包；测速身份与正式实验隔离。H100 仍以正式 v1.8 输入和已验收 K 完成 smoke。进度见 [RTX 选档记录](docs/experiments/lm-head-only/RTX_SELECTION_RECORD.md)。
 
 ## 从这里开始
 

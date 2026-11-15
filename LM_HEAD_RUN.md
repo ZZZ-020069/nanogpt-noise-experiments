@@ -30,7 +30,20 @@ G/T/K 在同一个 LH_RUN_ROOT 中锁定同一个 micro；smoke、clean、grid �
 
 ### RTX 双卡选档：分别测 16 和 32
 
-在双 RTX PRO 6000 上完成选档，H100 只验收选中的共同 micro。监督脚本让第一张卡测 16，第二张卡测 32，各自顺序完成 G/T/K、四优化器、32 步，共 24 个 smoke。使用当前 last-k 已登记的同一 v1.8 输入包；旧 v1.4 输入或重新生成的不同输入不能替代。
+在双 RTX PRO 6000 上完成选档，H100 只验收选中的共同 micro。监督脚本让第一张卡测 16，第二张卡测 32，各自顺序完成 G/T/K、四优化器、32 步，共 24 个候选。用户已允许本轮纯硬件测速使用旧输入，优先使用下面的 benchmark-only 路径。
+
+~~~bash
+export PYTHON=/experiments/xuyangzhang/venvs/quadratic/bin/python
+export INPUT_ROOT=/experiments/xuyangzhang/nanogpt-inputs
+export SELECTION_ROOT=/experiments/xuyangzhang/lm-head-legacy-selection-20261115
+export GPUS=0,1
+# 检查 GPU，计算经验 K，然后双卡选档；不启动正式训练
+bash scripts/run_lm_head_rtx_benchmark.sh
+~~~
+
+旧语料、初始化和窗口保持原文件、原哈希，执行仍使用当前完整模型、global batch=512×1024 和 3815 步调度的前 32 步。输出为 benchmark 模式，只写 benchmark.json，不能充当正式 smoke 凭证。K-benchmark.pt 由旧数据前 32768 个固定 eval_train tokens 测得 B、pbar 和 alpha，passed=false；正式加载器拒绝它。H100 可接收推荐 micro，但需要自己的正式输入和正式 K-approved.pt。
+
+如果已有同一正式 v1.8 输入和已验收 K，也可使用原有严格配对测速路径（不加 --benchmark-only）：
 
 ~~~bash
 export PYTHON=/absolute/path/to/python

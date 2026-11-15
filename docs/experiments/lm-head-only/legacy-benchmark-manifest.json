@@ -1,0 +1,60 @@
+{
+  "date": "2026-11-15",
+  "status": "ready_for_hardware_benchmark",
+  "source": {
+    "section": "14.19",
+    "sha256": "67c4c6d412cf7f480571898ef702d24448be7afe8598a234a5380b9949cd54c3"
+  },
+  "code": {
+    "sha256": "96a26c198b744c0de2fcff34855ae33865c6a6f67e046aacbc101cfa64ae4b7c",
+    "files": {
+      "nanogpt_noise/__init__.py": "ede0cafbec03bdb34484b793b02294729b26139bd960f19f077659a1ac618b23",
+      "nanogpt_noise/analyze.py": "2fd34bb1790191822ccc78960b472faaafccb9a4ce1a33294ba029e1fd556652",
+      "nanogpt_noise/artifacts.py": "d42431b6b639590063fd9013ecf73e5073092e845d23bde02a30313a9d1678e5",
+      "nanogpt_noise/data.py": "03eecc9fee9bc99a35bc30cb2cf971bd090239ff258689bb84af22e9ecff5344",
+      "nanogpt_noise/input_bundle.py": "7a648e0c040ac445fb4e051d02bbcaaba74f248a9f2daa0a678fff8211fe005d",
+      "nanogpt_noise/jobs.py": "9a06284ee2acedb0731e035ea259d0b50a4e84b39104fa7d66c3755c2ff2ffba",
+      "nanogpt_noise/model.py": "fe44f850ade595f3ddad855d95eea1d1cbf538f47d9c1307bac9d27efd82d697",
+      "nanogpt_noise/node.py": "4600cbfa8edec285b5e149473a1de9889bc7142a321421d3bcd00f300cb908fe",
+      "nanogpt_noise/noise.py": "954c3c8430e272736bc2dfa22294fe4b8168d13133d67733fb06e1bfa1e63150",
+      "nanogpt_noise/optim.py": "bc5ff0409a6c838cacb9551a2c227521f961a53e80ace887dfe571b4af158318",
+      "nanogpt_noise/pool.py": "5f46ecd1a7bf1bc99a2d501cdbb7cb64e64280d6dad968557c4a1ee43a14d330",
+      "nanogpt_noise/preflight.py": "e3f7197fb7155754e95439178e2c9936eb55019a6cf27d6014673dc5dbf4aaa1",
+      "nanogpt_noise/prepare.py": "ec829769373fd6b03e59a0afbcc78560d4c0eb98441d63237b88b2e8e5b86b98",
+      "nanogpt_noise/progress.py": "e6f2000f096185c5367d2a62cff54948be1a3a072b507a2fef68228d83adece7",
+      "nanogpt_noise/protocol.py": "6893f02ac7eaa2718bc03c4a4b4194f90455480a97f17d264cc449b37f430c9d",
+      "nanogpt_noise/scope.py": "22bf784730fba45bd5ff1dca8992486aef15ba41bb457f599f04bd2497b180e4",
+      "nanogpt_noise/search.py": "4bfde7fa721edc1a95e4a4822cd8e6b4fd5b2695bf1423f262500d17c6b5ae5b",
+      "nanogpt_noise/smoke.py": "1fd206a0b0a3ca5a2947781f78be0bd6fa1fa0005f3882fa52d05cca4a314da3",
+      "nanogpt_noise/storage.py": "cf904060119f7184e5d3a31d10bca416aab6bbe738663b34b5f0fa078c4956c2",
+      "nanogpt_noise/telemetry.py": "d40acb33d1a418ff8c0619f454f48a99dc724db7ae10e1454225dce63df290a4",
+      "nanogpt_noise/train.py": "45e2a95855a6ee571d8530cc97b6e910c84f8f40280701d00e5efa74434439ee",
+      "docs/nanogpt_experiment_design.md": "37b7f25a71e7c230bb5c95b8b48fcfdebff69e54eb4bcd957549a5e5f2213cf7",
+      "nanogpt_noise/lm_head/__init__.py": "8302238bf9f0bdcd19d7c1835c81124b44710e61832451cd73645b7e4d386313",
+      "nanogpt_noise/lm_head/__main__.py": "0534718e2d4136c70b3043e2b8451ee5526ff0c176ec8cc4cd33c8670f5e78b8",
+      "nanogpt_noise/lm_head/analyze.py": "e4bdb09253180fd56be1255eff4a2c4cb20091e4c7f36e6a995f396463845b70",
+      "nanogpt_noise/lm_head/benchmark.py": "aac99fbbb1cf514a512e066ce565e25402b716b41c3421eeb6fb07f3e936fe39",
+      "nanogpt_noise/lm_head/curvature.py": "33ea0301b75b6e1e0794105b57b1bff34a601714379387dad7fd923ad9c6d83f",
+      "nanogpt_noise/lm_head/diagnostics.py": "b95e2f4376bf014d37ad775d775687cb2b4a58ef111d921a4b21e48d44d0ddb2",
+      "nanogpt_noise/lm_head/measure.py": "29fb4e66e707754dc062aacde1df1d485cd9a0bf0de5a77842b3b4cc45d4a449",
+      "nanogpt_noise/lm_head/model.py": "252832be41f4d76085f69623c667517114be7afd58f37a379e498a739ca36617",
+      "nanogpt_noise/lm_head/protocol.py": "a816a75452f9d07d5c0ecb0f004f34964e49f403cd63e7ba5c355e4c3164403c",
+      "nanogpt_noise/lm_head/runner.py": "7d1fcb4d4f59b0dc7231fcf7059cb4631ffbcda9f1cda1943b7f5e17717c9bd5",
+      "nanogpt_noise/lm_head/train.py": "0f39689915c8e0c4a8dea4e80251f87ae6a671b6dca5f93c46063f2328447fc1"
+    }
+  },
+  "files": {
+    "nanogpt_noise/lm_head/benchmark.py": "aac99fbbb1cf514a512e066ce565e25402b716b41c3421eeb6fb07f3e936fe39",
+    "nanogpt_noise/lm_head/train.py": "0f39689915c8e0c4a8dea4e80251f87ae6a671b6dca5f93c46063f2328447fc1",
+    "scripts/benchmark_lm_head.py": "ba81a512d7ae408552cb80d21d7ca86caa6a2b0b96242ad3d62d6deae774f600",
+    "scripts/select_lm_head_micro.py": "7a43f278521aefad99102dcf570d315f1093e6b62256794ea9d65f4ddeb73104",
+    "scripts/run_lm_head_rtx_benchmark.sh": "238e4488d279ac3e2232e4a7997d8c7f6c4da4c85a3c2d2327357dd7529f842c",
+    "tests/test_lm_head_benchmark.py": "5ac5b37e7f31afb92e6d530edacd8b4ec745194e5e112567a21cc766b4392204",
+    "tests/test_lm_head_selection.py": "6d108777f92a2b3082a92a6dd149bc7d042bd6bbac5b582bb6418b1253838f9c",
+    "LM_HEAD_RUN.md": "0b86f4e31fa50311ae40e164f248834c35d785aa541fa6f81f88bdc65ddb2738",
+    "README.md": "97d09fbb820db1aff95b06d637e863397563ee3a217db27fa00af6ef237aba7c",
+    "docs/experiments/lm-head-only/RTX_SELECTION_RECORD.md": "075dfde101926bbdbd375a4ffdcefde01749e2fc53086056c3236d92f167c0e1",
+    "docs/superpowers/plans/2026-11-15-legacy-input-benchmark.md": "994cd02de000b9be0a1a277e7f99f47ef92a57e5f1fc7596cd1655327ffea231"
+  },
+  "formal_training_started": false
+}

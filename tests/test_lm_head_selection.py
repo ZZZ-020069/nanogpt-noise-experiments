@@ -147,6 +147,29 @@ class SelectionTests(unittest.TestCase):
                 selection.main(args)
             gpu.assert_not_called()
 
+    def test_benchmark_proof_is_separate_from_formal_smoke(self):
+        self.fill()
+        ident={**self.identity,'benchmark_only':True}
+        for micro in (16,32):
+            for objective in ('G','T','K'):
+                attempt=self.root/f'micro-{micro}'/objective/'attempt-0000'
+                directory=attempt/'smoke'/objective
+                ids=[]
+                for optimizer in selection.CENTERS:
+                    path=directory/optimizer
+                    meta=selection.read_json(path/'metadata.json')
+                    meta['execution']['mode']='benchmark'
+                    meta['run_id']=digest(meta['execution']);ids.append(meta['run_id'])
+                    write_json(path/'metadata.json',meta)
+                    status=selection.read_json(path/'status.json')
+                    status.update(mode='benchmark',run_id=meta['run_id'])
+                    write_json(path/'status.json',status)
+                write_json(directory/'benchmark.json',dict(passed=True,run_ids=ids,
+                           identity=selection.expected_proof(ident,micro,objective,'Khash')))
+                (directory/'passed.json').unlink()
+        self.assertEqual(selection.selection_report(self.root,ident,'Khash')['selected_micro'],32)
+        self.assertIsNone(self.report()['selected_micro'])
+
 
 if __name__ == '__main__':
     unittest.main()

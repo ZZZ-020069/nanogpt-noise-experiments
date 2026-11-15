@@ -44,15 +44,19 @@ def gpu_inventory(devices):
 
 
 def expected_proof(identity, micro, objective, statistics_hash):
-    return dict(input_id=identity['input_id'], objective=objective, micro=micro,
+    value = dict(input_id=identity['input_id'], objective=objective, micro=micro,
                 test=False, code=identity['code'],
                 statistics_sha256=statistics_hash if objective == 'K' else None)
+    if identity.get('benchmark_only'): value['benchmark_only'] = True
+    return value
 
 
 def inspect_success(attempt, identity, micro, objective, statistics_hash):
     """Revalidate evidence, including uninterrupted timing and all four optimizers."""
     directory = Path(attempt)/'smoke'/objective
-    proof = read_json(directory/'passed.json')
+    benchmark = identity.get('benchmark_only', False)
+    mode = 'benchmark' if benchmark else 'smoke'
+    proof = read_json(directory/('benchmark.json' if benchmark else 'passed.json'))
     expected = expected_proof(identity, micro, objective, statistics_hash)
     if proof.get('passed') is not True or proof.get('identity') != expected:
         raise ValueError('smoke proof identity mismatch')
@@ -64,7 +68,7 @@ def inspect_success(attempt, identity, micro, objective, statistics_hash):
         execution = metadata['execution']
         performance = read_json(candidate/'performance.json')
         run_id = metadata['run_id']
-        if (status.get('status') != 'completed' or status.get('mode') != 'smoke'
+        if (status.get('status') != 'completed' or status.get('mode') != mode
                 or status.get('step') != 32 or status.get('tokens') != 32*524288
                 or status.get('run_id') != run_id or digest(execution) != run_id
                 or execution.get('micro') != micro or execution.get('artifact_id') != identity['input_id']
@@ -72,7 +76,7 @@ def inspect_success(attempt, identity, micro, objective, statistics_hash):
                 or execution.get('statistics_sha256') != expected['statistics_sha256']
                 or execution.get('config', {}).get('objective') != objective
                 or execution.get('config', {}).get('optimizer') != optimizer
-                or execution.get('device_type') != 'cuda' or execution.get('mode') != 'smoke'
+                or execution.get('device_type') != 'cuda' or execution.get('mode') != mode
                 or not math.isfinite(status.get('loss', float('nan')))):
             raise ValueError(f'invalid completed smoke: {candidate}')
         seconds, peak = performance['wall_seconds'], performance['peak_allocated_bytes']
@@ -178,6 +182,8 @@ def main(argv=None):
     parser.add_argument('--stage', choices=('gt', 'all'), default='all')
     parser.add_argument('--retry-failed', action='store_true')
     parser.add_argument('--report-only', action='store_true')
+    parser.add_argument('--benchmark-only', action='store_true',
+                        help='verified legacy inputs and empirical K for 32-step hardware timing only')
     parser.add_argument('--handoff-micro', action='store_true',
                         help='validate transferred selection.json against local code/input/K; print selected micro only')
     args = parser.parse_args(argv)
@@ -194,8 +200,8 @@ def main(argv=None):
         if (result.get('complete') is not True or result.get('selected_micro') not in MICROS
                 or identity['code'] != code_identity()['sha256']
                 or identity['supervisor'] != file_hash(__file__)
-                or identity['input_id'] != ident['id']
-                or result['statistics_sha256'] != file_hash(args.statistics)):
+                or (not identity.get('benchmark_only') and
+                    (identity['input_id'] != ident['id'] or result['statistics_sha256'] != file_hash(args.statistics)))):
             raise ValueError('completed RTX selection must match H100 code, input and approved K')
         print(result['selected_micro'])
         return 0
@@ -215,15 +221,25 @@ def main(argv=None):
     if root == inputs or inputs in root.parents or root in inputs.parents:
         raise ValueError('selection outputs and immutable inputs must be separate trees')
     # Fail before creating outputs or loading GPUs when the input protocol is wrong.
-    ident = input_identity(inputs, False)
+    if args.benchmark_only:
+        from nanogpt_noise.data import verify
+        from nanogpt_noise.lm_head.benchmark import require_benchmark_input
+        ident = verify(inputs/'openwebtext_subset', inputs/'frozen-artifacts')
+        require_benchmark_input(ident)
+    else:
+        ident = input_identity(inputs, False)
     statistics_hash = None
     if args.statistics:
         from nanogpt_noise.lm_head.measure import load_statistics
         from nanogpt_noise.model import Shape
-        load_statistics(args.statistics, ident, Shape(**ident['shape']))
+        if args.benchmark_only:
+            from nanogpt_noise.lm_head.benchmark import load_benchmark_statistics
+            load_benchmark_statistics(args.statistics, ident, Shape(**ident['shape']))
+        else:
+            load_statistics(args.statistics, ident, Shape(**ident['shape']))
         statistics_hash = file_hash(args.statistics)
     if args.stage == 'all' and not statistics_hash:
-        parser.error('--stage all requires genuine --statistics K-approved.pt; use --stage gt for partial work')
+        parser.error('--stage all requires --statistics (K-benchmark.pt with --benchmark-only, otherwise K-approved.pt); use --stage gt for partial work')
     import torch
     devices = [s.strip() for s in args.devices.split(',')]
     with lock(root/'supervisor'):
@@ -232,6 +248,9 @@ def main(argv=None):
                         supervisor=file_hash(__file__), torch=str(torch.__version__), cuda=torch.version.cuda,
                         python=platform.python_version(),
                         gpus=[{k:g[k] for k in ('uuid','name','total_bytes','driver')} for g in gpus])
+        if args.benchmark_only:
+            identity.update(benchmark_only=True, source_design=ident['design'],source_budget=ident['budget'],
+                            worker=file_hash(REPO/'scripts/benchmark_lm_head.py'))
         identity_file = root/'selection_identity.json'
         if identity_file.exists() and read_json(identity_file) != identity:
             raise ValueError('selection identity changed; use a new selection root')
@@ -264,6 +283,8 @@ def main(argv=None):
                 command = [sys.executable, '-m', 'nanogpt_noise.lm_head', 'smoke',
                            '--input-root', str(inputs), '--run-root', str(attempt),
                            '--objective', objective, '--micro-batch', str(micro)]
+                if args.benchmark_only:
+                    command = [sys.executable, str(REPO/'scripts/benchmark_lm_head.py'), *command[4:]]
                 if objective == 'K':
                     command.extend(['--statistics', str(Path(args.statistics).resolve())])
                 print(f'GPU {gpu}: micro={micro} {objective} {attempt.name}', flush=True)

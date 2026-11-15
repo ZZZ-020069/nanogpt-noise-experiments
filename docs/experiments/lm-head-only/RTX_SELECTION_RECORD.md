@@ -1,6 +1,6 @@
 # RTX 选档执行记录 — 2026-11-15
 
-当前状态：双卡选档代码已实现，真实选档尚未启动。缺少与 H100 last-k 相同的已登记 v1.8 输入包；服务器现有 v1.4 包不能替代。K-approved.pt 也尚未生成，需要正确输入到位后执行初始化拟合与独立留出验收。
+当前状态：用户已允许旧输入用于本轮硬件测速，原输入阻塞解除。新增 benchmark-only 模式、经验 K 与一键双卡启动入口，准备部署运行。正式 K 科学验收独立保留。下文的早期阻塞记录作为执行历史。
 
 ## 已核对的服务器状态
 
@@ -38,3 +38,9 @@ H100 接手命令先验证 selection.json 的输入、训练代码、监督脚�
 服务器以 CUDA_VISIBLE_DEVICES 为空运行的 10 项选档测试全部通过，耗时 0.225 秒；Bash 语法和 CLI help 通过。实际输入预检报缺少 registration.json，退出后未创建 /experiments/xuyangzhang/lm-head-selection-20261115，nvidia-smi 无计算进程。没有训练或曲率计算在后台运行。
 
 两份原始日志已保存到工作区 VSCode下载/New/timing-evidence/lm-head-rtx-20261115。下一步取得当前 H100 的完整已登记输入包，先核对 input_id 与 SHA256SUMS，再按启动说明运行选档。
+
+## 用户授权旧输入测速
+
+本次按主设计 14.19 增加 benchmark-only：原 v1.4 文件与哈希不变，候选固定 32 步，当前完整模型和 global batch 不变。K-benchmark.pt 从固定旧数据计算 B/pbar/alpha，passed=false，正式加载器拒绝。独立 benchmark.json 不作为正式 passed.json；H100 接受 micro 推荐，仍独立检查正式输入和正式 K。
+
+启动入口为 scripts/run_lm_head_rtx_benchmark.sh。38 项组合检查通过（119.371 秒），再新增独立测速凭证检查；数学与正式恢复流程沿用原实现。
