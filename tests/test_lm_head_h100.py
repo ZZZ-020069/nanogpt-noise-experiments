@@ -67,6 +67,40 @@ class H100Launch(unittest.TestCase):
         self.assertEqual(passed.stdout.count('CALL'),3)
         self.assertNotIn('ARG=<run>',passed.stdout)
 
+    def test_clean_all_and_resume_chain_gtk_and_guard_prerequisites(self):
+        for action in ('clean-all', 'formal-all'):
+            missing = self.invoke(action)
+            self.assertNotEqual(missing.returncode, 0)
+            self.assertNotIn('CALL', missing.stdout)
+        with tempfile.TemporaryDirectory(prefix='h100 smoke guard ') as run_root:
+            (Path(run_root) / 'smoke' / 'G').mkdir(parents=True)
+            (Path(run_root) / 'smoke' / 'G' / 'passed.json').write_text('{}', encoding='utf8')
+            incomplete = self.invoke('clean-all', LH_RUN_ROOT=run_root, K_STATISTICS='/approved.pt')
+            self.assertEqual(incomplete.returncode, 2)
+            self.assertIn('Missing T smoke proof', incomplete.stderr)
+            self.assertNotIn('CALL', incomplete.stdout)
+            for objective in ('T', 'K'):
+                (Path(run_root) / 'smoke' / objective).mkdir(parents=True)
+                (Path(run_root) / 'smoke' / objective / 'passed.json').write_text('{}', encoding='utf8')
+            failed = self.invoke('clean-all', LH_RUN_ROOT=run_root, K_STATISTICS='/approved.pt', FAIL_T='1')
+            self.assertEqual(failed.returncode, 17)
+            self.assertEqual(failed.stdout.count('CALL'), 2)
+            self.assertNotIn('ARG=<K>', failed.stdout)
+            passed = self.invoke('formal-all', LH_RUN_ROOT=run_root, K_STATISTICS='/approved.pt')
+            self.assertEqual(passed.returncode, 0, passed.stderr)
+            self.assertEqual(passed.stdout.count('CALL'), 3)
+            self.assertEqual(passed.stdout.count('ARG=<--phase>\nARG=<clean>'), 3)
+            self.assertIn('ARG=<--objective>\nARG=<G>', passed.stdout)
+            self.assertIn('ARG=<--objective>\nARG=<T>', passed.stdout)
+            self.assertIn('ARG=<--objective>\nARG=<K>', passed.stdout)
+            self.assertNotIn('ARG=<--phase>\nARG=<grid>', passed.stdout)
+            resumed = self.invoke('resume', LH_RUN_ROOT=run_root, LH_PHASE='clean-all', K_STATISTICS='/approved.pt')
+            self.assertEqual(resumed.returncode, 0, resumed.stderr)
+            self.assertEqual(resumed.stdout.count('CALL'), 3)
+            self.assertEqual(resumed.stdout.count('ARG=<--resume>'), 3)
+            self.assertEqual(resumed.stdout.count('ARG=<--phase>\nARG=<clean>'), 3)
+        self.assertNotEqual(self.invoke('resume', LH_PHASE='clean-all').returncode, 0)
+
     def test_resume_and_readonly_routes(self):
         self.assertNotEqual(self.invoke('resume').returncode,0)
         result=self.invoke('resume',LH_PHASE='grid',OBJECTIVE='T')

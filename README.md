@@ -6,7 +6,7 @@
 
 - **固定执行布局**：`MICRO_BATCH=16`，单卡梯度累积 32 次，`G` / `T` / `K` 统一布局。
 - **监控与启动入口**：H100 入口（`scripts/run_lm_head_h100.sh`）默认开启 SwanLab（项目 `nanogpt-lm-head`），需在任务环境配置 `SWANLAB_API_KEY`，先通过 `smoke` 并在网页确认指标送达后再启动正式任务。
-- **按顺序操作**：准备 → `G` → `T` → `K` → 汇总对比，详见 [H100 操作手册](LM_HEAD_RUN.md) 与 [操作参考](LM_HEAD_REFERENCE.md)。
+- **按顺序操作**：准备与 `K` 拟合留出 → `G/T/K` 联合冒烟（`smoke-all`）→ `G→T→K` 自动顺序正式 `clean`（`clean-all`）→ 人工审查后按 `G → T → K` 门控逐目标运行 `grid`，详见 [H100 操作手册](LM_HEAD_RUN.md) 与 [操作参考](LM_HEAD_REFERENCE.md)。
 
 > **提示**：当前已将 Layer 1 `K`/`T` Triton 融合加速合入 `design/lm-head-only-20261114`，[H100 操作手册](LM_HEAD_RUN.md) 已同步更新为直接检出本分支最新提交与加速后的暂估排期（[参考页](LM_HEAD_REFERENCE.md) 与 [runtime-estimates.json](docs/experiments/lm-head-only/runtime-estimates.json) 中的历史明细仍对应加速前基线，待 H100 首轮 `smoke` 后按实测公式替换）。
 
