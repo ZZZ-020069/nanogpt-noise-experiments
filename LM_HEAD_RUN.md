@@ -2,72 +2,76 @@
 
 按顺序完成：**准备 → G 短测与正式训练 → T 短测与正式训练 → K 拟合、验收与训练 → 查看结果**。同一组 GPU 上，前一步退出后再运行下一步。
 
-G 是真实 GPT 损失；T 是初始化处的二次展开；K 是用 Hessian 统计构造的二次代理。三者都只更新完整 LM Head，固定 micro=16。本文使用代码版本 `lm-head-h100-m16-20261115-v3`。
+G 是真实 GPT 损失；T 是初始化处的二次展开；K 是用 Hessian 统计构造的二次代理。三者都只更新完整 LM Head，固定 `micro=16`（单卡累积 32 次）。当前分支 `design/lm-head-only-20261114` 已合入 `K` / `T` 的 **Layer 1 Triton 融合快路径**（自动兼容 PyTorch 行分块回退），不改变任何科学协议或优化超参数。
 
 ## 用时先看这里
 
-以下按 **4 张空闲 H100、micro=16** 估计墙钟时间（不是 GPU 小时）；smoke 和曲率只用第一张卡，formal/grid 才用四卡并行。不含平台排队、输入制备与人工审查时间。**尚无本版 H100 实测**：训练范围是假设 H100 端到端耗时为 RTX 实测外推的 0.5–1.5 倍所得的情景估计，不是已测加速比；首轮 H100 数据到手后替换。计算依据见[用时估算与更新](LM_HEAD_REFERENCE.md#用时估算与更新)。
+以下按 **4 张空闲 H100、micro=16** 估计墙钟时间（不是 GPU 小时）；smoke 和曲率只用第一张卡，formal/grid 才用四卡并行。不含平台排队、输入制备与人工审查时间。**尚无本版 H100 实测**：
 
-| 流程 | 暂定用时 / 排期 |
+- `G` 沿用 RTX PRO 6000 四优化器基准外推（[runtime-estimates.json](docs/experiments/lm-head-only/runtime-estimates.json)）；
+- `T` 与 `K` 已按合入 Layer 1 Triton 加速后的 RTX PRO 6000（CUDA BF16，`adamw` / `muon` 32-step E2E 实测：`T` `39.42s / 39.79s`、`K` `32.11s / 31.64s`）套用同一公式与 `0.5–1.5x` H100 排期敏感性区间更新；若环境退回 PyTorch 分块回退（未启用 Triton），`T` / `K` 将退回加速前耗时（见[参考页](LM_HEAD_REFERENCE.md#用时估算与更新)）。首轮 H100 `smoke` 数据到手后按真实测速替换。
+
+| 流程 | 暂定用时 / 排期（已含 Layer 1 加速） |
 |---|---|
 | 下载代码、配置路径与 Key | 预留 5–15 分钟 |
 | 安装 SDK、check、plan | 预留 5–15 分钟，受下载和磁盘影响 |
 | G smoke → G formal | smoke 预留 3–8 分钟；formal 约 6–18 小时 |
-| T smoke → T formal | smoke 预留 6–18 分钟；formal 约 18–54 小时 |
+| T smoke → T formal | smoke 预留 3–8 分钟；formal 约 5–15 小时 |
 | K 拟合 → 独立留出 | 暂无可靠小时数；各阶段首轮计时，不能用 K smoke 代替估算 |
-| K smoke → K formal | smoke 预留 4–12 分钟；formal 约 11–32 小时 |
+| K smoke → K formal | smoke 预留 3–7 分钟；formal 约 4–12 小时 |
 | status + report | clean 阶段通常预留 1–3 分钟；完整 grid 汇总预留 5–20 分钟 |
-| clean 已完成后，G / T / K 的其余 34 节点 | 分别约 8–25 / 25–77 / 15–46 天；按正常候选全预算外推 |
+| clean 已完成后，G / T / K 的其余 34 节点 | 分别约 8–25 / 7–21 / 5–17 天；按正常候选全预算外推 |
 | resume / pause | 恢复启动预留 1–5 分钟，之后只跑剩余工作；暂停请求数秒，实际退出还需等待更新边界和保存 |
 
-三目标 clean 的训练部分合计约 **35–104 小时**，另加 K 测量及审查。网格远长于 clean，先看 clean 结果再决定是否提交；少于四张卡时 formal/grid 会更慢，不能直接沿用本表。
+三目标 clean 的训练部分合计约 **15–45 小时**（开启 Triton 时），另加 K 测量及审查。网格远长于 clean，先看 clean 结果再决定是否提交；少于四张卡时 formal/grid 会更慢，不能直接沿用本表。
 
 ## 1. 准备代码、路径和 SwanLab（只做一次）
 
-在 H100 平台任务环境中配置保密变量 `SWANLAB_API_KEY`，后续每次任务都要继承它。然后下载固定代码：
+在 H100 平台任务环境中配置保密变量 `SWANLAB_API_KEY`，后续每次任务都要继承它。然后下载最新正式分支代码：
 
 **本步骤用时：下载与配置预留 5–15 分钟，不含输入制备或传输。**
 
 ```bash
 set -euo pipefail
 cd /data/260010171
-git clone --branch lm-head-h100-m16-20261115-v3 --single-branch \
+git clone --branch design/lm-head-only-20261114 --single-branch \
   https://github.com/ZZZ-020069/nanogpt-noise-experiments.git \
-  nanogpt-lm-head-h100-m16-20261115-v3
-cd nanogpt-lm-head-h100-m16-20261115-v3
-cp -n scripts/lm_head_h100.env.example /data/260010171/lm-head-h100-m16-v3.env
+  nanogpt-lm-head-h100-m16-20261116
+cd nanogpt-lm-head-h100-m16-20261116
+cp -n scripts/lm_head_h100.env.example /data/260010171/lm-head-h100-m16-20261116.env
 ```
 
 打开复制出的 `.env` 文件，确认以下配置，再继续：
 
 | 配置 | 填什么 |
 |---|---|
-| `PYTHON` | 实验 Python 的命令或绝对路径；要求 Python≥3.11、PyTorch≥2.6,<3、NumPy≥1.26,<3 |
+| `PYTHON` | 实验 Python 的命令或绝对路径；要求 Python≥3.11、PyTorch≥2.6,<3、NumPy≥1.26,<3（Linux CUDA 版 PyTorch 通常自带 Triton） |
 | `INPUT_ROOT` | 已登记的正式 v1.8 输入目录；默认 `/data/260010171/inputs-v1.8` |
-| `LH_RUN_ROOT` | 全新的结果目录；默认 `/data/260010171/results/lm-head-m16-20261115-v3` |
+| `LH_RUN_ROOT` | 全新的结果目录；默认 `/data/260010171/results/lm-head-m16-20261116` |
 | `GPUS` | 本次分配的 GPU 编号，四卡默认 `0,1,2,3` |
 | SwanLab | 保持 `NANOGPT_SWANLAB=1`；项目默认 `nanogpt-lm-head`，团队账号另填 `SWANLAB_WORKSPACE` |
 
 **以下每个命令块都已包含目录切换和环境加载，可以整块复制到一个平台任务中。按顺序执行，通过该步骤的检查后，再复制下一块。**
 
-路径不同就统一替换文中的路径。已有 v3 checkout 可直接使用；已有任务继续原版本，运行中不更新代码。
+路径不同就统一替换文中的路径。不要在已开始正式训练的结果目录中途升级代码版本（`code_identity` 会严格校验代码指纹）。
 
 ## 2. 检查环境和输入
 
-整块复制执行。安装 SDK 只需一次，使用独立实验环境，勿升级旧任务正在使用的共享环境。
+整块复制执行。安装 SDK 只需一次，使用独立实验环境，勿升级旧任务正在使用的共享环境；顺带检测 Triton 融合核是否可用（无 GPU 节点时自动跳过）：
 
 **本步骤用时：安装与检查预留 5–15 分钟；仅 plan 通常为秒级。**
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 "$PYTHON" -m pip install "swanlab==0.10.5"
+"$PYTHON" -c "import torch, nanogpt_noise.lm_head.kernels as k; print('cuda=', torch.cuda.is_available(), 'triton_ready=', k.triton_ready(torch.device('cuda')) if torch.cuda.is_available() else 'skip_no_cuda')"
 bash scripts/run_lm_head_h100.sh check
 bash scripts/run_lm_head_h100.sh plan
 ```
 
-**继续条件：**没有报错；plan 显示 `micro=16`、`accumulations=32`、`steps=3815`、每搜索 8 候选。check 只检查 SwanLab 配置和 SDK，下一步才验收云端连接。报错时先按文末处理表修复。
+**继续条件：**没有报错；plan 显示 `micro=16`、`accumulations=32`、`steps=3815`、每搜索 8 候选；若当前在 GPU 任务节点上，确认输出 `triton_ready= True`（若为 `False` 会自动回退到等价 PyTorch 分块，正确性不受影响但 `T` / `K` 会明显变慢）。check 只检查 SwanLab 配置和 SDK，下一步才验收云端连接。报错时先按文末处理表修复。
 
 ## 3. 跑 G：先短测，再正式训练
 
@@ -77,8 +81,8 @@ bash scripts/run_lm_head_h100.sh plan
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 OBJECTIVE=G bash scripts/run_lm_head_h100.sh smoke
 ```
 
@@ -88,8 +92,8 @@ OBJECTIVE=G bash scripts/run_lm_head_h100.sh smoke
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 OBJECTIVE=G bash scripts/run_lm_head_h100.sh formal
 ```
 
@@ -99,23 +103,25 @@ formal 执行零噪声 clean：四优化器各搜索 8 个学习率，共 32 条
 
 ## 4. 跑 T：重复相同验收流程
 
-**本步骤用时（T smoke）：预留 6–18 分钟，四优化器在第一张卡上顺序短测。**
+`T` 默认走 Layer 1 Triton 融合快路径（不支持 Triton 时自动走 PyTorch 行分块回退）。
+
+**本步骤用时（T smoke）：预留 3–8 分钟，四优化器在第一张卡上顺序短测。**
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 OBJECTIVE=T bash scripts/run_lm_head_h100.sh smoke
 ```
 
-确认 `smoke/T/passed.json` 和 SwanLab 四优化器数据后，另开任务：
+确认 `smoke/T/passed.json`、SwanLab 四优化器数据，以及 `performance.json` 单步耗时正常（说明 Triton 加速已生效）后，另开任务：
 
-**本步骤用时（T clean）：四卡暂估 18–54 小时，待 H100 实测校准。**
+**本步骤用时（T clean）：四卡暂估 5–15 小时（未启用 Triton 回退时约 18–54 小时），待 H100 实测校准。**
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 OBJECTIVE=T bash scripts/run_lm_head_h100.sh formal
 ```
 
@@ -131,11 +137,11 @@ OBJECTIVE=T bash scripts/run_lm_head_h100.sh formal
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 unset LH_CHECKPOINT
 LH_TOKENS=32768 LH_BLOCKS=5 \
-LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/init-fit-32k \
+LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261116/init-fit-32k \
 bash scripts/run_lm_head_h100.sh curvature-fit
 ```
 
@@ -147,12 +153,12 @@ bash scripts/run_lm_head_h100.sh curvature-fit
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 unset LH_CHECKPOINT
 LH_TOKENS=32768 LH_BLOCKS=5 \
-LH_FIT_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/init-fit-32k \
-LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/init-check-32k \
+LH_FIT_DIR=/data/260010171/results/lm-head-curvature-m16-20261116/init-fit-32k \
+LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261116/init-check-32k \
 bash scripts/run_lm_head_h100.sh curvature-check
 ```
 
@@ -162,23 +168,23 @@ bash scripts/run_lm_head_h100.sh curvature-check
 
 ## 6. 跑 K：先短测，再正式训练
 
-**本步骤用时（K smoke）：预留 4–12 分钟，四优化器在第一张卡上顺序短测。**
+**本步骤用时（K smoke）：预留 3–7 分钟，四优化器在第一张卡上顺序短测。**
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 OBJECTIVE=K bash scripts/run_lm_head_h100.sh smoke
 ```
 
 确认 `smoke/K/passed.json` 和 SwanLab 四优化器数据后，另开任务：
 
-**本步骤用时（K clean）：四卡暂估 11–32 小时，待 H100 实测校准。**
+**本步骤用时（K clean）：四卡暂估 4–12 小时（未启用 Triton 回退时约 11–32 小时），待 H100 实测校准。**
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 OBJECTIVE=K bash scripts/run_lm_head_h100.sh formal
 ```
 
@@ -190,8 +196,8 @@ OBJECTIVE=K bash scripts/run_lm_head_h100.sh formal
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 bash scripts/run_lm_head_h100.sh status
 bash scripts/run_lm_head_h100.sh report
 ```
@@ -206,30 +212,30 @@ bash scripts/run_lm_head_h100.sh report
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 OBJECTIVE=G bash scripts/run_lm_head_h100.sh grid
 ```
 
 **T 噪声网格：**
 
-**本步骤用时（T grid）：clean 已完成时，四卡剩余暂估 25–77 天，待 H100 实测校准。**
+**本步骤用时（T grid）：clean 已完成时，四卡剩余暂估 7–21 天（开启 Triton），待 H100 实测校准。**
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 OBJECTIVE=T bash scripts/run_lm_head_h100.sh grid
 ```
 
 **K 噪声网格（正式 K 文件已配置，K smoke 已通过）：**
 
-**本步骤用时（K grid）：clean 已完成时，四卡剩余暂估 15–46 天，待 H100 实测校准。**
+**本步骤用时（K grid）：clean 已完成时，四卡剩余暂估 5–17 天（开启 Triton），待 H100 实测校准。**
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 OBJECTIVE=K bash scripts/run_lm_head_h100.sh grid
 ```
 
@@ -240,6 +246,7 @@ grid 每目标 35 节点 × 4 优化器 × 8 候选，复用同身份已完成�
 | 看到什么 | 怎么处理 |
 |---|---|
 | 输入、路径或 Key/SDK 报错 | 修复路径或任务环境，重新执行 check。输入必须含正式登记；不能拿旧测速输入替代 |
+| `triton_ready` 为 `False` 或 `T`/`K` 速度偏慢 | 检查环境是否安装 Triton、CUDA driver/stub（`kernels.py` 会自动扫描 `/usr/local/cuda*/lib64/stubs`）及是否被强制禁用；缺失时会自动回退 PyTorch 行分块，结果一致但耗时更长 |
 | CUDA OOM | 先检查 GPU 是否被其他任务占用；释放占用或换到空闲 H100。保持 micro=16；空闲卡仍 OOM 时保留日志并暂停排查 |
 | smoke 成功但网页没数据 | 修复 Key、项目/空间或网络。已完成 smoke 重跑会复用结果；改用全新 `LH_RUN_ROOT` 重新 check 和 smoke，确认上传后再 formal |
 | 正式训练中 SwanLab 断更 | 检查平台与本地 `progress.json`/日志，训练可能仍在继续；不要因为网页断更重复启动任务 |
@@ -261,8 +268,8 @@ grid 每目标 35 节点 × 4 优化器 × 8 候选，复用同身份已完成�
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 OBJECTIVE=G LH_PHASE=clean bash scripts/run_lm_head_h100.sh resume
 ```
 
@@ -272,8 +279,8 @@ OBJECTIVE=G LH_PHASE=clean bash scripts/run_lm_head_h100.sh resume
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 OBJECTIVE=T LH_PHASE=clean bash scripts/run_lm_head_h100.sh resume
 ```
 
@@ -283,8 +290,8 @@ OBJECTIVE=T LH_PHASE=clean bash scripts/run_lm_head_h100.sh resume
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 OBJECTIVE=K LH_PHASE=clean bash scripts/run_lm_head_h100.sh resume
 ```
 
@@ -296,8 +303,8 @@ OBJECTIVE=K LH_PHASE=clean bash scripts/run_lm_head_h100.sh resume
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 OBJECTIVE=G LH_PHASE=grid bash scripts/run_lm_head_h100.sh resume
 ```
 
@@ -307,8 +314,8 @@ OBJECTIVE=G LH_PHASE=grid bash scripts/run_lm_head_h100.sh resume
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 OBJECTIVE=T LH_PHASE=grid bash scripts/run_lm_head_h100.sh resume
 ```
 
@@ -318,8 +325,8 @@ OBJECTIVE=T LH_PHASE=grid bash scripts/run_lm_head_h100.sh resume
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 OBJECTIVE=K LH_PHASE=grid bash scripts/run_lm_head_h100.sh resume
 ```
 
@@ -331,8 +338,8 @@ OBJECTIVE=K LH_PHASE=grid bash scripts/run_lm_head_h100.sh resume
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
+source /data/260010171/lm-head-h100-m16-20261116.env
 bash scripts/run_lm_head_h100.sh pause
 ```
 
