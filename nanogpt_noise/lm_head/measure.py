@@ -71,6 +71,28 @@ def _statistics(b, pbar, t, n):
     return dict(B=b.cpu(), pbar=pbar.cpu(), alpha=(t/denominator).cpu(), trace=t.cpu())
 
 
+def fit_scale_decision(moments, count, stability):
+    """Apply design 14.6.4 before freezing a fit or opening held-out data."""
+    cvs = {}
+    for layout in (0, 1):
+        entry = moments[layout]['second_moment']
+        mean, std = entry['mean'], entry['std']
+        cv = (std / abs(mean) if mean is not None and std is not None
+              and math.isfinite(mean) and math.isfinite(std) and mean > 0 and std >= 0
+              else None)
+        cvs[layout] = cv if cv is not None and math.isfinite(cv) else None
+    if count not in (5, 10) or any(v is None for v in cvs.values()):
+        action = 'review_undefined_moments'
+    elif not stability:
+        action = 'expand_tokens'  # Caller must stop at the registered token ceiling.
+    elif any(v > .30 for v in cvs.values()):
+        action = 'expand_blocks' if count == 5 else 'unresolved_at_block_limit'
+    else:
+        action = 'ready'
+    return dict(passed=action == 'ready', action=action, blocks_per_layout=count,
+                second_moment_cv=cvs, cv_threshold=.30)
+
+
 def measure(input_root, output, mode='fit', *, tokens=32768, count=None,
             fit_dir=None, checkpoint=None, chunk_tokens=64, micro=DEFAULT_MICRO, test=False):
     require_micro(micro,test)
@@ -133,6 +155,12 @@ def measure(input_root, output, mode='fit', *, tokens=32768, count=None,
                 or parent['tokens'] != tokens or (not parent['fit_passed'] and source_hash is None)
                 or parent['test'] != test):
             raise ValueError('held-out check requires a compatible passing frozen fit')
+        if source_hash is None:
+            scale = parent.get('fit_scale') or {}
+            if (scale.get('passed') is not True or scale.get('action') != 'ready'
+                    or scale.get('blocks_per_layout') not in (5, 10)
+                    or not parent.get('frozen_fit_id')):
+                raise ValueError('held-out check requires a frozen fit with passing block-scale review')
     with lock(output):
         if (output/'identity.json').exists():
             if read_json(output/'identity.json')['id'] != run_id:
@@ -263,6 +291,11 @@ def measure(input_root, output, mode='fit', *, tokens=32768, count=None,
                     minimum=float(values.min()),maximum=float(values.max()))
             moment = moment_summary[layout]['second_moment']['mean']
             moment_summary[layout]['effective_rank_plugin'] = float(stats['trace'])**2/moment if moment else None
+        fit_scale = None
+        if mode == 'fit' and source_hash is None:
+            fit_scale = fit_scale_decision(moment_summary, count, stability)
+            passed = passed and fit_scale['passed']
+        frozen_fit_id = run_id if mode == 'fit' and passed and source_hash is None else None
         report = dict(id=run_id, mode=mode, input_id=ident['id'], tokens=tokens, test=test,
                       trace=float(stats['trace']), trace_relative_error=trace_error,
                       gradient_norm=norm, gradient_cosine_prefix=cosine,
@@ -270,6 +303,7 @@ def measure(input_root, output, mode='fit', *, tokens=32768, count=None,
                       geometry_passed=geometry, compatibility=compatibility, numeric_passed=numeric,
                       fixed_gradient_checks_passed=fixed['passed'],
                       gradient_singular_values=singular_values(g), moments_by_layout=moment_summary,
+                      fit_scale=fit_scale, frozen_fit_id=frozen_fit_id,
                       taylor=dict(**losses,displacement=displacement,absolute_loss_error=error_l,
                           relative_loss_change_error=error_l/abs(losses['real']-losses['initial'])
                             if abs(losses['real']-losses['initial'])>1e-12 else None,
@@ -282,7 +316,8 @@ def measure(input_root, output, mode='fit', *, tokens=32768, count=None,
         record = dict(design=VERSION, code=code_identity()['sha256'], input_id=ident['id'],
                       initialization_hash=ident['initialization_tensor_hash'], shape=asdict(shape),
                       source_checkpoint_sha256=source_hash, tokens=tokens, test=test,
-                      statistics=stats, fit_passed=passed)
+                      statistics=stats, fit_passed=passed, fit_scale=fit_scale,
+                      frozen_fit_id=frozen_fit_id)
         if mode == 'fit':
             save_checkpoint(output/'fit.pt', record)
         elif passed and source_hash is None:

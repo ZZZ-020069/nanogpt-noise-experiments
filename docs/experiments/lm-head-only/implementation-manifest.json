@@ -1,18 +1,20 @@
 {
   "schema": 1,
   "design": "LH-QP-20261114-draft2",
-  "status": "swanlab_wired_h100_cloud_smoke_pending",
+  "status": "cpu_audit_fixes_verified_h100_smoke_pending",
   "branch": "design/lm-head-only-20261114",
-  "release_tag": "lm-head-h100-m16-20261115-v3",
+  "release_tag": null,
   "base_commit": "bb3cf72e1113d0e9ceb903515772bfb1d1161df9",
-  "previous_implementation_commit": "24dbc518c761796de775cb6d46caffa8755491c6",
+  "previous_implementation_commit": "67913b0c9f0ac58767d7ddc66e4f2d1564e15aa0",
   "source": {
     "workspace_relative_path": "VSCode下载/New/nanogpt_experiment_design.md",
-    "section": "14.16–14.24",
-    "sha256": "650f96cd8e55022e0626d6aef2c70c4a9d2830b1ccc20aacab53d298f28bb609"
+    "section": "14.0–14.25",
+    "sha256": "ec32048c6445081f1f1f8c97f70b508ca408aaf076923472257532cf5bdbe73a",
+    "published_snapshot": "docs/experiments/lm-head-only/20261116-audit-fixes/EXPERIMENT_DESIGN.md",
+    "published_snapshot_sha256": "6dcf591e9976caa42b4e2fbc53a61b67e9ad4f5737a3dc28e3d030d807cb0887"
   },
   "code": {
-    "sha256": "f2a7040f5fdb374ba767ab7881199653d94afc8b50343f9cf2878f4d1fae9e09",
+    "sha256": "cd055a8dcdc9dcb363c8b8cf919bbdc62656a9c6fc2fab1e73f4ad5fef9e4127",
     "files": {
       "nanogpt_noise/__init__.py": "ede0cafbec03bdb34484b793b02294729b26139bd960f19f077659a1ac618b23",
       "nanogpt_noise/analyze.py": "2fd34bb1790191822ccc78960b472faaafccb9a4ce1a33294ba029e1fd556652",
@@ -37,16 +39,17 @@
       "nanogpt_noise/train.py": "45e2a95855a6ee571d8530cc97b6e910c84f8f40280701d00e5efa74434439ee",
       "docs/nanogpt_experiment_design.md": "37b7f25a71e7c230bb5c95b8b48fcfdebff69e54eb4bcd957549a5e5f2213cf7",
       "nanogpt_noise/lm_head/__init__.py": "8302238bf9f0bdcd19d7c1835c81124b44710e61832451cd73645b7e4d386313",
-      "nanogpt_noise/lm_head/__main__.py": "d57a419b6136377043c123644c2dc1968add2dfb41d2940a4dce35962afad73a",
+      "nanogpt_noise/lm_head/__main__.py": "ab729a6512cd418d14d100c86e0b5bb92d628c42def5ca059dc4c5381c719913",
       "nanogpt_noise/lm_head/analyze.py": "e4bdb09253180fd56be1255eff4a2c4cb20091e4c7f36e6a995f396463845b70",
       "nanogpt_noise/lm_head/curvature.py": "33ea0301b75b6e1e0794105b57b1bff34a601714379387dad7fd923ad9c6d83f",
       "nanogpt_noise/lm_head/diagnostics.py": "b95e2f4376bf014d37ad775d775687cb2b4a58ef111d921a4b21e48d44d0ddb2",
-      "nanogpt_noise/lm_head/measure.py": "de617213d6e762f18fbbe8b918fa8b50c8f7be2032a1bd58d54d583f7bb466d3",
-      "nanogpt_noise/lm_head/model.py": "252832be41f4d76085f69623c667517114be7afd58f37a379e498a739ca36617",
+      "nanogpt_noise/lm_head/kernels.py": "ad71c7781aa5f05e1b9abe4ee0a0208bea78435255f5343469717e465e4c0431",
+      "nanogpt_noise/lm_head/measure.py": "24a6e97cac72abc3d23fd1ec994d8c11f69f6d073dc5d889f3264b99833d216a",
+      "nanogpt_noise/lm_head/model.py": "806b386e43d0eb78e5a2dab48548e9cc628ebc5f539731e4ecb92cca4402e7bf",
       "nanogpt_noise/lm_head/protocol.py": "3571dab6f15d7ce4e51dcdf5188ed977059c536cac03636a9ed87b2e8ee4519a",
       "nanogpt_noise/lm_head/runner.py": "e8dcea12bbd917d502182719c978bbc3a30c9f86508da442ad101c8e371a8aab",
       "nanogpt_noise/lm_head/telemetry.py": "9743e500b633164ef19c30b5584d987f2b861c113a48d9b5faf2d6d7087eeb48",
-      "nanogpt_noise/lm_head/train.py": "02055f71f9ad93af4bed2d9f8c9280dbf4cd7e1ee957caffbdbd081528d317b5"
+      "nanogpt_noise/lm_head/train.py": "aca91db3367892fbc2f894f3a057013b599c193b2ed7407df487e0bd4f347877"
     }
   },
   "execution": {
@@ -57,35 +60,54 @@
     "candidates_per_search": 8
   },
   "validation": {
-    "passed": 45,
-    "seconds": 59.898,
-    "command": "python -m unittest tests.test_telemetry tests.test_lm_head_telemetry tests.test_lm_head tests.test_lm_head_micro tests.test_lm_head_shell tests.test_lm_head_h100 -v",
+    "passed": 58,
+    "seconds": 89.001,
+    "command": "python -B -m unittest tests.test_telemetry tests.test_lm_head_telemetry tests.test_lm_head tests.test_lm_head_micro tests.test_lm_head_shell tests.test_lm_head_h100 tests.test_lm_head_speedup tests.test_lm_head_fit_gate -v",
     "gpu_tasks_started": false,
     "server_accessed": false,
     "real_cloud_verified": false,
+    "cuda_visible_devices": "",
+    "bash_blocks": 23,
+    "shell_files_parsed": 3,
     "details": "IMPLEMENTATION_VALIDATION.md"
   },
   "history": "history/README.md",
   "files": {
+    "LM_HEAD_REFERENCE.md": {
+      "sha256": "e88559e052cf2b30259422ddebfb6fceca86b76e0e70c147daab71b4afbfab3d",
+      "bytes": 12517
+    },
     "LM_HEAD_RUN.md": {
-      "sha256": "089f0f2b57eb9067b95b4629d9c1c4f472d0a501da8368fc20fed78e0ec26d91",
-      "bytes": 16090
+      "sha256": "318f216e9d9d5730c82e6739d3d8a9ceef66aec6626f674fbdb3f5395a73ce57",
+      "bytes": 13908
     },
     "README.md": {
-      "sha256": "8d2c71305e657a007fe00189046ce7f50ed2a41f0b9cdb895edcf1a42d5dae38",
-      "bytes": 3979
+      "sha256": "8b2a728cc8413138777cf5114b8a69da8ddf8e93ad4c049e7f9e9d3b86bbd32e",
+      "bytes": 7596
     },
     "docs/experiments/lm-head-only/.gitattributes": {
       "sha256": "5bc51a8a12c71d0c207b673707ed9743cb1a975d8a4fd0b5cdfa17fa1b595120",
       "bytes": 48
     },
+    "docs/experiments/lm-head-only/20261116-audit-fixes/EXPERIMENT_DESIGN.md": {
+      "sha256": "6dcf591e9976caa42b4e2fbc53a61b67e9ad4f5737a3dc28e3d030d807cb0887",
+      "bytes": 73491
+    },
     "docs/experiments/lm-head-only/IMPLEMENTATION_RECORD.md": {
-      "sha256": "8eb3823a36f602ab53090cad22ec43c1629a750b34f5bffee736b5d0c8b09be3",
-      "bytes": 1170
+      "sha256": "e1428ab84036d0c90853737e801e2ee2f0c3a62d5c39299625162e3d91065b49",
+      "bytes": 2050
     },
     "docs/experiments/lm-head-only/IMPLEMENTATION_VALIDATION.md": {
-      "sha256": "ea482e14e2c5734e1e7d2f923e321a84ef6199e96856479ca3f126e075b66984",
-      "bytes": 1221
+      "sha256": "9f942197179b1ab01a56af24ac7f04925388a2bff2cb343cd02b2803d26b1aa4",
+      "bytes": 2357
+    },
+    "docs/experiments/lm-head-only/runtime-estimates.json": {
+      "sha256": "c5c0de0b72ed56cbdc77ca04ac57442d0ab57be431d9b715683dd38964cffc76",
+      "bytes": 8424
+    },
+    "docs/nanogpt_experiment_design.md": {
+      "sha256": "37b7f25a71e7c230bb5c95b8b48fcfdebff69e54eb4bcd957549a5e5f2213cf7",
+      "bytes": 102691
     },
     "docs/superpowers/plans/2026-11-15-lm-head-cleanup.md": {
       "sha256": "9a9a21cee8644026c2b84da72690ff6df4e7b2e6d8378969017853e817a9d5c0",
@@ -95,13 +117,37 @@
       "sha256": "994eb3d9b96cbc121ca9e41eda80e38081a2614c4e61c75f4d4df854b029c704",
       "bytes": 2296
     },
+    "nanogpt_noise/__init__.py": {
+      "sha256": "ede0cafbec03bdb34484b793b02294729b26139bd960f19f077659a1ac618b23",
+      "bytes": 58
+    },
+    "nanogpt_noise/analyze.py": {
+      "sha256": "2fd34bb1790191822ccc78960b472faaafccb9a4ce1a33294ba029e1fd556652",
+      "bytes": 5264
+    },
+    "nanogpt_noise/artifacts.py": {
+      "sha256": "d42431b6b639590063fd9013ecf73e5073092e845d23bde02a30313a9d1678e5",
+      "bytes": 6205
+    },
+    "nanogpt_noise/data.py": {
+      "sha256": "03eecc9fee9bc99a35bc30cb2cf971bd090239ff258689bb84af22e9ecff5344",
+      "bytes": 4783
+    },
+    "nanogpt_noise/input_bundle.py": {
+      "sha256": "7a648e0c040ac445fb4e051d02bbcaaba74f248a9f2daa0a678fff8211fe005d",
+      "bytes": 3389
+    },
+    "nanogpt_noise/jobs.py": {
+      "sha256": "9a06284ee2acedb0731e035ea259d0b50a4e84b39104fa7d66c3755c2ff2ffba",
+      "bytes": 656
+    },
     "nanogpt_noise/lm_head/__init__.py": {
       "sha256": "8302238bf9f0bdcd19d7c1835c81124b44710e61832451cd73645b7e4d386313",
       "bytes": 74
     },
     "nanogpt_noise/lm_head/__main__.py": {
-      "sha256": "d57a419b6136377043c123644c2dc1968add2dfb41d2940a4dce35962afad73a",
-      "bytes": 5925
+      "sha256": "ab729a6512cd418d14d100c86e0b5bb92d628c42def5ca059dc4c5381c719913",
+      "bytes": 6270
     },
     "nanogpt_noise/lm_head/analyze.py": {
       "sha256": "e4bdb09253180fd56be1255eff4a2c4cb20091e4c7f36e6a995f396463845b70",
@@ -115,13 +161,17 @@
       "sha256": "b95e2f4376bf014d37ad775d775687cb2b4a58ef111d921a4b21e48d44d0ddb2",
       "bytes": 4527
     },
+    "nanogpt_noise/lm_head/kernels.py": {
+      "sha256": "ad71c7781aa5f05e1b9abe4ee0a0208bea78435255f5343469717e465e4c0431",
+      "bytes": 6548
+    },
     "nanogpt_noise/lm_head/measure.py": {
-      "sha256": "de617213d6e762f18fbbe8b918fa8b50c8f7be2032a1bd58d54d583f7bb466d3",
-      "bytes": 16931
+      "sha256": "24a6e97cac72abc3d23fd1ec994d8c11f69f6d073dc5d889f3264b99833d216a",
+      "bytes": 21764
     },
     "nanogpt_noise/lm_head/model.py": {
-      "sha256": "252832be41f4d76085f69623c667517114be7afd58f37a379e498a739ca36617",
-      "bytes": 3979
+      "sha256": "806b386e43d0eb78e5a2dab48548e9cc628ebc5f539731e4ecb92cca4402e7bf",
+      "bytes": 7559
     },
     "nanogpt_noise/lm_head/protocol.py": {
       "sha256": "3571dab6f15d7ce4e51dcdf5188ed977059c536cac03636a9ed87b2e8ee4519a",
@@ -136,28 +186,92 @@
       "bytes": 1645
     },
     "nanogpt_noise/lm_head/train.py": {
-      "sha256": "02055f71f9ad93af4bed2d9f8c9280dbf4cd7e1ee957caffbdbd081528d317b5",
-      "bytes": 22610
+      "sha256": "aca91db3367892fbc2f894f3a057013b599c193b2ed7407df487e0bd4f347877",
+      "bytes": 24111
+    },
+    "nanogpt_noise/model.py": {
+      "sha256": "fe44f850ade595f3ddad855d95eea1d1cbf538f47d9c1307bac9d27efd82d697",
+      "bytes": 3573
+    },
+    "nanogpt_noise/node.py": {
+      "sha256": "4600cbfa8edec285b5e149473a1de9889bc7142a321421d3bcd00f300cb908fe",
+      "bytes": 3148
+    },
+    "nanogpt_noise/noise.py": {
+      "sha256": "954c3c8430e272736bc2dfa22294fe4b8168d13133d67733fb06e1bfa1e63150",
+      "bytes": 1850
+    },
+    "nanogpt_noise/optim.py": {
+      "sha256": "bc5ff0409a6c838cacb9551a2c227521f961a53e80ace887dfe571b4af158318",
+      "bytes": 3645
+    },
+    "nanogpt_noise/pool.py": {
+      "sha256": "5f46ecd1a7bf1bc99a2d501cdbb7cb64e64280d6dad968557c4a1ee43a14d330",
+      "bytes": 9283
+    },
+    "nanogpt_noise/preflight.py": {
+      "sha256": "e3f7197fb7155754e95439178e2c9936eb55019a6cf27d6014673dc5dbf4aaa1",
+      "bytes": 2617
+    },
+    "nanogpt_noise/prepare.py": {
+      "sha256": "ec829769373fd6b03e59a0afbcc78560d4c0eb98441d63237b88b2e8e5b86b98",
+      "bytes": 5501
+    },
+    "nanogpt_noise/progress.py": {
+      "sha256": "e6f2000f096185c5367d2a62cff54948be1a3a072b507a2fef68228d83adece7",
+      "bytes": 15602
+    },
+    "nanogpt_noise/protocol.py": {
+      "sha256": "6893f02ac7eaa2718bc03c4a4b4194f90455480a97f17d264cc449b37f430c9d",
+      "bytes": 3122
+    },
+    "nanogpt_noise/scope.py": {
+      "sha256": "22bf784730fba45bd5ff1dca8992486aef15ba41bb457f599f04bd2497b180e4",
+      "bytes": 9762
+    },
+    "nanogpt_noise/search.py": {
+      "sha256": "4bfde7fa721edc1a95e4a4822cd8e6b4fd5b2695bf1423f262500d17c6b5ae5b",
+      "bytes": 2125
+    },
+    "nanogpt_noise/smoke.py": {
+      "sha256": "1fd206a0b0a3ca5a2947781f78be0bd6fa1fa0005f3882fa52d05cca4a314da3",
+      "bytes": 2689
+    },
+    "nanogpt_noise/storage.py": {
+      "sha256": "cf904060119f7184e5d3a31d10bca416aab6bbe738663b34b5f0fa078c4956c2",
+      "bytes": 4005
+    },
+    "nanogpt_noise/telemetry.py": {
+      "sha256": "d40acb33d1a418ff8c0619f454f48a99dc724db7ae10e1454225dce63df290a4",
+      "bytes": 4001
+    },
+    "nanogpt_noise/train.py": {
+      "sha256": "45e2a95855a6ee571d8530cc97b6e910c84f8f40280701d00e5efa74434439ee",
+      "bytes": 19722
     },
     "scripts/lm_head_h100.env.example": {
-      "sha256": "f3eed21e5e99c484ded240e77fcce560b4c24375eef6443dc5832bfd43666c00",
-      "bytes": 697
+      "sha256": "1f82a5e378390926b3645c80a486a18db9cc1ca1a5f2eed9b4fa2a5b47e01cc9",
+      "bytes": 973
     },
     "scripts/run_lm_head.sh": {
       "sha256": "c39c724117b982dd227cb3758716ea81abc513c77a4b92c5aa2d5f5d49d000ea",
       "bytes": 3211
     },
     "scripts/run_lm_head_h100.sh": {
-      "sha256": "69e7599bb16bcb407a5d9083d45f03f7fff8195659dff7905f24ee75a0313c01",
-      "bytes": 2665
+      "sha256": "d7625b376628ad2e117d55e5fab49f4378886ab0e112cd4a0c740e25dadfd727",
+      "bytes": 7866
     },
     "tests/test_lm_head.py": {
       "sha256": "17bcdf921a6dba2cc3c827a124baffc3204396d5d8341d2ef77cc7ba8060d54e",
       "bytes": 15770
     },
+    "tests/test_lm_head_fit_gate.py": {
+      "sha256": "c67587379052ce7284d41e5e05291e5bf6f01b8aff62fe17c9a78cfd460a245f",
+      "bytes": 5033
+    },
     "tests/test_lm_head_h100.py": {
-      "sha256": "1513653d7f30a43610e2285ebc598065bc733b6a42b87021c7b9d357536014dd",
-      "bytes": 6288
+      "sha256": "535e2f544947a68594899e156d581af913372e4bbe6e5395ec2fcaeb86456ca2",
+      "bytes": 14135
     },
     "tests/test_lm_head_micro.py": {
       "sha256": "c73d5cb04f40b636ad86e7f10b045513f2eaf0373b6a26de5afbe5979d2cf979",
@@ -167,17 +281,13 @@
       "sha256": "306118c497998596a130b10e3a9e550eb7f61a0b05d27240c0f35e2d7087d4ea",
       "bytes": 3979
     },
+    "tests/test_lm_head_speedup.py": {
+      "sha256": "570aee5ca038452fd78c3b88441c77bb6aff1d12a4237da0ae14fe4824173ac3",
+      "bytes": 7282
+    },
     "tests/test_lm_head_telemetry.py": {
       "sha256": "647efa9ea7e544ee84448528ed632e7182648c02a3d3e1fb46ee9fbbac31606a",
       "bytes": 5527
-    },
-    "LM_HEAD_REFERENCE.md": {
-      "sha256": "1acf21e47394f6c3a0062122ca50ba44854e54154857d1f872400149ece808b0",
-      "bytes": 11141
-    },
-    "docs/experiments/lm-head-only/runtime-estimates.json": {
-      "sha256": "c5c0de0b72ed56cbdc77ca04ac57442d0ab57be431d9b715683dd38964cffc76",
-      "bytes": 8424
     }
   },
   "swanlab": {
@@ -190,15 +300,18 @@
     "cloud_acceptance": "verify_four_optimizer_smoke_metrics_in_dashboard"
   },
   "documentation_revision": {
-    "kind": "self_contained_operator_commands",
-    "compatible_code_tag": "lm-head-h100-m16-20261115-v3",
+    "kind": "complete_operator_commands_with_fit_scale_gate",
     "entry": "LM_HEAD_RUN.md",
     "reference": "LM_HEAD_REFERENCE.md",
-    "training_code_changed": false,
-    "bash_blocks": 25,
-    "explicit_resume_variants": 6,
+    "directory_suffix": "20261116-r1",
+    "training_kernel_changed_in_this_revision": false,
+    "curvature_acceptance_changed": true,
+    "bash_blocks": 23,
+    "explicit_resume_variants": 4,
     "runtime_estimates": "docs/experiments/lm-head-only/runtime-estimates.json",
+    "timing_basis": "pre_speedup_RTX_scenarios_pending_H100_calibration",
     "h100_runtime_measured": false,
     "timing_note_before_every_command": true
-  }
+  },
+  "implementation_revision": "20261116-r1"
 }

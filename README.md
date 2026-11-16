@@ -8,7 +8,7 @@
 - **监控与启动入口**：H100 入口（`scripts/run_lm_head_h100.sh`）默认开启 SwanLab（项目 `nanogpt-lm-head`），需在任务环境配置 `SWANLAB_API_KEY`，先通过 `smoke` 并在网页确认指标送达后再启动正式任务。
 - **按顺序操作**：准备与 `K` 统计量校准（`prepare-k`）→ 联合短测（`smoke-all`）→ `G→T→K` 自动顺序正式 `clean`（`clean-all`）→ 审阅结果后再逐目标执行 `grid`，详见 [H100 操作手册](LM_HEAD_RUN.md) 与 [操作参考](LM_HEAD_REFERENCE.md)。
 
-> **提示**：当前已将 Layer 1 `K`/`T` Triton 融合加速合入 `design/lm-head-only-20261114`，[H100 操作手册](LM_HEAD_RUN.md) 已同步更新为直接检出本分支最新提交与加速后的暂估排期（[参考页](LM_HEAD_REFERENCE.md) 与 [runtime-estimates.json](docs/experiments/lm-head-only/runtime-estimates.json) 中的历史明细仍对应加速前基线，待 H100 首轮 `smoke` 后按实测公式替换）。
+当前修复版使用新的 `20261116-r1` 目录，下载后冻结实际提交。`prepare-k` 先检查拟合数据稳定性及块间二阶谱矩变异系数，冻结通过的拟合规模后才打开留出；10 块拟合仍配 5 块留出。已有任务继续原冻结代码，不更新运行中的 checkout。手册排期与[计算清单](docs/experiments/lm-head-only/runtime-estimates.json)统一保留为加速前的工程参照；新 T/K 的 H100 用时待实测。
 
 ---
 
@@ -18,10 +18,10 @@
 |---|---|
 | [H100 操作手册](LM_HEAD_RUN.md) | 输入核对、`smoke`、`clean`、曲率拟合/留出、`grid` 与断点续训命令 |
 | [操作参考](LM_HEAD_REFERENCE.md) | SwanLab 指标字段、输出文件结构、扩样规则与耗时更新公式 |
-| [实现与验证记录](docs/experiments/lm-head-only/IMPLEMENTATION_VALIDATION.md) | 早期实现验证基线记录 |
+| [实现与验证记录](docs/experiments/lm-head-only/IMPLEMENTATION_VALIDATION.md) | 当前修复的 CPU、恢复与启动流程验收，另列历史验证 |
 | [一页审阅摘要](docs/experiments/lm-head-only/20261114-draft2/README.md) | 研究动机、基础对齐与必要改动摘要 |
-| [完整实验设计](docs/experiments/lm-head-only/20261114-draft2/EXPERIMENT_DESIGN.md) | 训练、Hessian 采样、二次代理及验收判据（第 14 章发布快照） |
-| [来源与校验清单](docs/experiments/lm-head-only/20261114-draft2/manifest.json) | 主设计来源、基线提交与文件 SHA-256 |
+| [完整实验设计](docs/experiments/lm-head-only/20261116-audit-fixes/EXPERIMENT_DESIGN.md) | 主设计第 14 章最新发布快照，含实现修订记录；旧 draft2 快照保留 |
+| [当前实现校验清单](docs/experiments/lm-head-only/implementation-manifest.json) | 当前代码身份、来源及文件 SHA-256；不把旧 v3 标签当作本次发布 |
 
 ---
 
@@ -44,10 +44,10 @@
 - **加速机制**：在 `world == 1` 且 CUDA `bfloat16` autocast 下，通过单次 online softmax Triton kernel 融合完成 logits 统计、损失归约与 pre-GEMM 梯度 `dz` 生成，并由显式矩阵乘 `dz^T @ h` 完成 FP32 梯度累积；非 BF16、CPU 或无 Triton 环境自动回退至数学等价的 PyTorch 行分块路径（`row_slice=1024`）。
 - **协议保持**：不改变 `MICRO_BATCH=16`、单卡累积 32 次、BF16 autocast、FP32 主参数与梯度、`G` 训练逻辑、固定评估、`K` 曲率测量流程，并将 `kernels.py` 纳入 `code_identity()` 代码指纹校验。
 
-### 已完成验证（本地 CPU + 远端 RTX PRO 6000）
+### 验证范围
 
-- **本地单元测试**：覆盖 `telemetry`、`lm_head_telemetry`、`lm_head`、`lm_head_micro`、`lm_head_shell`、`lm_head_h100` 及 `lm_head_speedup` 共 **49 项测试全部通过**（CPU 合成数据与模拟上传）。
-- **远端 RTX PRO 6000（CUDA BF16，`micro=16`，32-step 端到端 smoke，含 eval 与 checkpoint）**：
+- **当前修复**：CPU 回归及新增扩块门槛检查见[当前验证记录](docs/experiments/lm-head-only/IMPLEMENTATION_VALIDATION.md)；本轮没有启动 GPU 任务。
+- **此前加速提交的 RTX 记录**（本轮未重新实测）：CUDA BF16、`micro=16`、32-step smoke，含 eval 与 checkpoint。下表保留原报告，不作为当前 H100 验收凭证。
 
 | 目标 / 优化器 | 加速后 32-step 耗时 | 峰值显存 | 加速前 32-step 参考 |
 |---|---:|---:|---:|
@@ -55,7 +55,7 @@
 | `K`（`adamw` / `muon`） | `32.11s` / `31.64s` | `15.62 GiB` / `15.47 GiB` | `87.19s` / `85.75s`（提速约 **2.7x**） |
 | `T`（`adamw` / `muon`） | `39.42s` / `39.79s` | `18.54 GiB` / `18.40 GiB` | `146.13s` / `141.36s`（提速约 **3.6–3.7x**） |
 
-- **CUDA BF16 断点续训一致**：在 RTX PRO 6000 上对 `K` 与 `T` 进行 `4-step`、`pause_after=2` 的真实暂停与恢复测试，与连续运行结果达到 **bit-exact 一致**；目前尚未在 H100 上启动正式实验。
+- **此前报告的 CUDA BF16 断点续训检查**：RTX PRO 6000 的 `K` 与 `T`，`4-step`、`pause_after=2`，恢复与连续运行 bit-exact 一致。本轮未复测；当前版本的 H100 smoke 和实际 SwanLab 送达仍待验收。
 
 ---
 

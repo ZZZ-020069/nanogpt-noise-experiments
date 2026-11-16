@@ -37,44 +37,71 @@
 
 未完成搜索不会进入 comparison；先用 status 或候选的 progress 查看进度。正式搜索会压缩逐步日志并保留赢家恢复包，不能按“每个候选都有 final.pt”判断是否丢数据。完整单目标噪声面仅赢家恢复包约 54 GB；曲率、分析快照、日志及临时写入空间另计。
 
-## 拟合扩样
+## 拟合扩块
 
-只在拟合池上决定规模，冻结后才打开留出。主设计第 14.6.4 节规定：数值正常但稳定性未通过时，按 65536、131072 tokens 扩容，保持原采样块；到上限仍不稳定就记录未测稳，暂停 K。
+数据扩样的 65536 / 131072 tokens 完整命令见[操作手册第 3 步](LM_HEAD_RUN.md#3-生成并校验-k-统计量只用第-1-张卡)。只有拟合数据稳定且 `fit_scale.action=expand_blocks`，才执行本节；数值、结构与梯度相关检查还须正常。只选与刚才拟合相同 token 数的一块，不顺次运行三块。
 
-例如从 32768 扩为 65536，每布局仍用 5 块：
+`moments_by_layout` 中各布局的 `second_moment.std / abs(second_moment.mean)` 是块间变异系数。程序把两个布局的值和 30% 门槛写入 `fit_scale`；零均值、非有限或无法计算的值不会自动通过。5 块超过门槛时停止并建议扩到 10 块；10 块仍超过门槛时记录 `unresolved_at_block_limit` 并停止。脚本不会自行扩大 token 数或块数。
 
-**本步骤用时（65536 tokens 拟合）：暂无可靠小时数；需独立计时，不能把 32768 tokens 的整轮耗时直接乘二。**
+**32768 tokens、每布局 10 个拟合块；用时：暂无可靠小时数，按本机日志校准。拟合通过后另需留出测量时间。**
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
+LH_TOKENS=32768 LH_BLOCKS=10 bash scripts/run_lm_head_h100.sh prepare-k
+```
+
+**65536 tokens、每布局 10 个拟合块；用时：暂无可靠小时数，按本机日志校准。拟合通过后另需留出测量时间。**
+
+```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
+LH_TOKENS=65536 LH_BLOCKS=10 bash scripts/run_lm_head_h100.sh prepare-k
+```
+
+**131072 tokens、每布局 10 个拟合块；用时：暂无可靠小时数，按本机日志校准。拟合通过后另需留出测量时间。**
+
+```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
+LH_TOKENS=131072 LH_BLOCKS=10 bash scripts/run_lm_head_h100.sh prepare-k
+```
+
+拟合输出为 `$LH_CURVATURE_ROOT/init-fit-<tokens>-b10/`，留出输出为 `init-check-<tokens>-fit-b10/`。`fit.pt` 只有在全部拟合门槛通过时才登记 `frozen_fit_id`；它绑定代码、输入、token 数、窗口和实际参数块。初始化留出始终每布局 5 块，沿用相同 token 数。
+
+如果需要在拟合结束后人工查看报告，再单独打开留出，下面给出 **65536 tokens、10 块拟合** 的完整示例。它与上方同规模 `prepare-k` 共用目录。选择一种运行方式即可；已完成的相同设置会读取已有报告。
+
+**单独拟合用时：待本机实测。**
+
+```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
 unset LH_CHECKPOINT
-LH_TOKENS=65536 LH_BLOCKS=5 \
-LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/init-fit-64k \
+LH_TOKENS=65536 LH_BLOCKS=10 \
+LH_CURVATURE_DIR="$LH_CURVATURE_ROOT/init-fit-65536-b10" \
 bash scripts/run_lm_head_h100.sh curvature-fit
 ```
 
-需要 131072 时，同时替换 token 数和目录名为 `init-fit-128k`。只有数据扩容已稳定、同一布局的全参数二阶谱矩估计在五块间的变异系数仍大于 30%，才将拟合块数改为 `LH_BLOCKS=10`，另用新目录（例如 `init-fit-64k-b10`）。该触发条件由报告人工审查，脚本不会自动扩块。
+只有该拟合 `passed=True`、`fit_scale.action=ready` 且 `frozen_fit_id` 非空时，执行下面留出；未通过就停止。
 
-查看 `report.json` 的 `moments_by_layout`，各布局 `second_moment.std / abs(second_moment.mean)` 即该变异系数；均值为零时不能直接用比值判定。`numeric_passed`、`geometry_passed`、`compatibility.passed` 和 `fixed_gradient_checks_passed` 对应数值、结构与梯度兼容性检查；这些失败不能直接解释为样本不足。
-
-例如最终采用 65536 tokens、5 块的拟合并已通过，留出命令为：
-
-**本步骤用时（65536 tokens 留出）：暂无可靠小时数；需独立计时，不能把 32768 tokens 的整轮耗时直接乘二。**
+**单独留出用时：待本机实测；固定每布局 5 块。**
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
 unset LH_CHECKPOINT
 LH_TOKENS=65536 LH_BLOCKS=5 \
-LH_FIT_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/init-fit-64k \
-LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/init-check-64k \
+LH_FIT_DIR="$LH_CURVATURE_ROOT/init-fit-65536-b10" \
+LH_CURVATURE_DIR="$LH_CURVATURE_ROOT/init-check-65536-fit-b10" \
 bash scripts/run_lm_head_h100.sh curvature-check
 ```
 
-若拟合实际采用 10 块，将 `LH_FIT_DIR` 改为对应拟合目录；留出仍为每布局 5 块。留出通过后，当共同 `.env` 通过 `source` 导出了 `LH_ENV_FILE` 且尚未锁定其他 `K_STATISTICS` 时，初始化 `curvature-check` 会自动将实际生成的 `K-approved.pt` 路径写入共同 `.env` 的 `K_STATISTICS`（否则手动写入并取消注释；后期携带 `LH_CHECKPOINT` 的漂移检查不会触碰 `.env`）。测量设置变化使用新目录，保留旧报告；不能修改 metadata 或通过标志复用旧产物。
+留出失败保留为失败，不根据同一留出结果再调代理。初始化留出通过后，当共同 `.env` 导出了 `LH_ENV_FILE` 且尚未绑定其他 `K_STATISTICS` 时，程序会自动写入实际 `K-approved.pt` 路径。若提示已保留其他路径，先核对所用代码、输入和正式运行身份，停止处理，勿强制覆盖后续训练正在使用的 K。后期携带 `LH_CHECKPOINT` 的漂移检查不会改写 `.env`。
 
 ## 训练后曲率漂移
 
@@ -86,11 +113,11 @@ bash scripts/run_lm_head_h100.sh curvature-check
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
 : "${LH_CHECKPOINT:?设置为实际 G clean 赢家的 Head 快照绝对路径}"
 LH_TOKENS=32768 LH_BLOCKS=2 \
-LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/drift-G-winner-step191-fit \
+LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261116-r1/drift-G-winner-step191-fit \
 bash scripts/run_lm_head_h100.sh curvature-fit
 ```
 
@@ -100,12 +127,12 @@ bash scripts/run_lm_head_h100.sh curvature-fit
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
-source /data/260010171/lm-head-h100-m16-v3.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
 : "${LH_CHECKPOINT:?设置为与拟合相同的 G clean 赢家 Head 快照绝对路径}"
 LH_TOKENS=32768 LH_BLOCKS=2 \
-LH_FIT_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/drift-G-winner-step191-fit \
-LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/drift-G-winner-step191-check \
+LH_FIT_DIR=/data/260010171/results/lm-head-curvature-m16-20261116-r1/drift-G-winner-step191-fit \
+LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261116-r1/drift-G-winner-step191-check \
 bash scripts/run_lm_head_h100.sh curvature-check
 ```
 

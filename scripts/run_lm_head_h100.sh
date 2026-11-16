@@ -12,7 +12,9 @@ if [[ "$action" == help ]]; then
 H100 LM Head-only: final user-selected micro=16, accumulation=32, global batch=512x1024.
 Usage: bash scripts/run_lm_head_h100.sh ACTION
 Actions: check plan prepare-k smoke smoke-all formal clean clean-all formal-all grid resume pause status report curvature-fit curvature-check
-prepare-k = run initial curvature-fit and held-out curvature-check, then auto-fill K_STATISTICS in LH_ENV_FILE.
+prepare-k = freeze a passing initial fit (including block CV review), then run held-out check.
+LH_BLOCKS=5|10 controls fit only; initial held-out always uses 5 blocks per layout.
+Failed fits stop before held-out. Passing check can auto-fill K_STATISTICS in LH_ENV_FILE.
 formal = clean (four optimizers, eight LR candidates each, 3815 steps each).
 clean-all (or formal-all) = sequentially run G -> T -> K clean without manual chaining, then generate report.
 Required: INPUT_ROOT (registered v1.8 inputs), LH_RUN_ROOT (fresh formal output).
@@ -62,6 +64,7 @@ k_path = Path(sys.argv[3])
 env_file = sys.argv[4]
 print('\n=== PREPARE-K SUMMARY ===')
 print(f"fit  : passed={fit.get('passed')} tokens={fit.get('tokens')} stability={fit.get('stability_passed')} numeric={fit.get('numeric_passed')} geometry={fit.get('geometry_passed')}")
+print(f"fit scale: {fit.get('fit_scale')} frozen_fit_id={fit.get('frozen_fit_id')}")
 print(f"check: passed={chk.get('passed')} tokens={chk.get('tokens')} trace_rel_err={chk.get('trace_relative_error')} compat={chk.get('compatibility', {}).get('passed')} fixed_grad={chk.get('fixed_gradient_checks_passed')}")
 print(f"K-approved.pt: {k_path.resolve()} (exists={k_path.is_file()})")
 if env_file and Path(env_file).is_file():
@@ -127,11 +130,15 @@ case "$action" in
     export OBJECTIVE=G
     tokens="${LH_TOKENS:-32768}"
     blocks="${LH_BLOCKS:-5}"
+    if [[ "$blocks" != 5 && "$blocks" != 10 ]]; then
+      printf 'prepare-k requires LH_BLOCKS=5 or 10 for the fit; held-out uses 5.\n' >&2
+      exit 2
+    fi
     curv_root="${LH_CURVATURE_ROOT:-${LH_RUN_ROOT:-/data/260010171/results/lm-head-m16}-curvature}"
-    fit_dir="${LH_FIT_DIR:-$curv_root/init-fit-$tokens}"
-    check_dir="${LH_CURVATURE_DIR:-$curv_root/init-check-$tokens}"
+    fit_dir="${LH_FIT_DIR:-$curv_root/init-fit-$tokens-b$blocks}"
+    check_dir="${LH_CURVATURE_DIR:-$curv_root/init-check-$tokens-fit-b$blocks}"
     LH_TOKENS="$tokens" LH_BLOCKS="$blocks" LH_CURVATURE_DIR="$fit_dir" bash scripts/run_lm_head.sh curvature-fit
-    LH_TOKENS="$tokens" LH_BLOCKS="$blocks" LH_FIT_DIR="$fit_dir" LH_CURVATURE_DIR="$check_dir" bash scripts/run_lm_head.sh curvature-check
+    LH_TOKENS="$tokens" LH_BLOCKS=5 LH_FIT_DIR="$fit_dir" LH_CURVATURE_DIR="$check_dir" bash scripts/run_lm_head.sh curvature-check
     print_prepare_k_summary "$fit_dir" "$check_dir"
     exit 0 ;;
   smoke-all)

@@ -8,6 +8,8 @@
 
 > `clean-all` 跑完会自动生成汇总表并停止；确认结果后再决定是否逐个启动第 6 步的 `grid`。
 
+本次修复使用全新的 `20261116-r1` 代码、环境和结果目录。已有任务继续使用原冻结版本和原环境恢复；不要在运行目录 `git pull`，也不要将旧 K 产物或 smoke 凭证搬入新目录。
+
 ## 耗时参考（4 张 H100）
 
 | 步骤 | 说明 | 预估墙钟时间 |
@@ -15,14 +17,17 @@
 | 1–2. 配置与检查 | 克隆代码、配置 `.env`、检查输入与环境 | 各 5–15 分钟 |
 | 3. `prepare-k` | 生成并校验 K 统计量（只用第 1 张卡） | 待首轮实测（无固定小时数） |
 | 4. `smoke-all` | G / T / K 联合 32 步短测（只用第 1 张卡） | 约 10–25 分钟 |
-| 5. `clean-all` | 自动顺序跑完 G → T → K 正式 `clean`（4 卡并行） | **合计约 15–45 小时**（G 6–18h / T 5–15h / K 4–12h） |
-| 6. `grid`（可选） | 确认 `clean` 后按 G → T → K 逐目标提交 | 约 8–25 / 7–21 / 5–17 天（各目标单独跑） |
+| 5. `clean-all` | 顺序 G → T → K，每个目标四卡并行 | 旧实现排期参照合计 35–104 小时（G 6–18 / T 18–54 / K 11–32 小时）；加速版待实测 |
+| 6. `grid`（可选） | clean 后其余 34 节点，逐目标提交 | 旧实现参照 G 8–25 / T 25–77 / K 15–46 天；加速版待实测 |
+| 暂停、恢复、查进度 | 见下方对应命令 | 暂停请求与查询通常 1 分钟内；释放需等完整步和保存；恢复预留 5–15 分钟初始化，再加剩余训练时间 |
 
-注：上述训练耗时由单卡短测外推（含 0.5–1.5x 波动范围），不含平台排队时间；实际速度以第 4 步 `smoke-all` 输出为准。
+训练排期沿用主设计 14.24 和[计算清单](docs/experiments/lm-head-only/runtime-estimates.json)：旧实现 RTX 短测外推，再取 0.5–1.5 倍情景；这不是 H100 实测或完成时限。新 T/K 加速版尚无同口径 H100 外推清单，先用 smoke 和首段正式日志重新估算，不能承诺旧参照就是上限。不含排队、K 测量、人工审查和故障重跑。
 
 ---
 
 ## 1. 下载代码与配置（只做一次）
+
+**本步骤用时：预留 5–15 分钟，取决于网络和已有环境。**
 
 在平台任务环境变量中配置 **`SWANLAB_API_KEY`**（后续每个任务都需保留该变量），然后执行：
 
@@ -31,19 +36,22 @@ set -euo pipefail
 cd /data/260010171
 git clone --branch design/lm-head-only-20261114 --single-branch \
   https://github.com/ZZZ-020069/nanogpt-noise-experiments.git \
-  nanogpt-lm-head-h100-m16-20261116
-cd nanogpt-lm-head-h100-m16-20261116
-cp -n scripts/lm_head_h100.env.example /data/260010171/lm-head-h100-m16-20261116.env
+  nanogpt-lm-head-h100-m16-20261116-r1
+cd nanogpt-lm-head-h100-m16-20261116-r1
+git checkout --detach HEAD
+git rev-parse HEAD
+cp -n scripts/lm_head_h100.env.example /data/260010171/lm-head-h100-m16-20261116-r1.env
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
 ```
 
-打开 `/data/260010171/lm-head-h100-m16-20261116.env`，按当前平台路径核对或修改以下变量：
+打开 `/data/260010171/lm-head-h100-m16-20261116-r1.env`，按当前平台路径核对或修改以下变量：
 
 | 变量 | 说明 |
 |---|---|
 | `PYTHON` | 实验环境 Python 路径（要求 Python ≥ 3.11，PyTorch ≥ 2.6 且 < 3，NumPy ≥ 1.26 且 < 3） |
 | `INPUT_ROOT` | 已登记的正式输入目录（默认 `/data/260010171/inputs-v1.8`） |
-| `LH_RUN_ROOT` | 本次全新输出目录（默认 `/data/260010171/results/lm-head-m16-20261116`） |
-| `LH_CURVATURE_ROOT` | K 统计量输出目录（默认 `/data/260010171/results/lm-head-curvature-m16-20261116`） |
+| `LH_RUN_ROOT` | 本次全新输出目录（默认 `/data/260010171/results/lm-head-m16-20261116-r1`） |
+| `LH_CURVATURE_ROOT` | K 统计量输出目录（默认 `/data/260010171/results/lm-head-curvature-m16-20261116-r1`） |
 | `GPUS` | 本次使用的 GPU 编号（4 卡填 `0,1,2,3`） |
 | `SWANLAB_PROJ_NAME` | 保持 `nanogpt-lm-head`；团队账号可另取消注释并填写 `SWANLAB_WORKSPACE` |
 
@@ -53,12 +61,14 @@ cp -n scripts/lm_head_h100.env.example /data/260010171/lm-head-h100-m16-20261116
 
 ## 2. 检查环境与输入
 
+**本步骤用时：预留 5–15 分钟；首次依赖安装可能更久。**
+
 整块复制运行（安装依赖并核对 SwanLab 配置、输入哈希、Triton 状态与运行计划）：
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
-source /data/260010171/lm-head-h100-m16-20261116.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
 "$PYTHON" -m pip install "swanlab==0.10.5"
 "$PYTHON" -c "import torch, nanogpt_noise.lm_head.kernels as k; print('cuda=', torch.cuda.is_available(), 'triton_ready=', k.triton_ready(torch.device('cuda')) if torch.cuda.is_available() else 'skip_no_cuda')"
 bash scripts/run_lm_head_h100.sh check
@@ -71,33 +81,59 @@ bash scripts/run_lm_head_h100.sh plan
 
 ## 3. 生成并校验 K 统计量（只用第 1 张卡）
 
-该命令会自动依次完成拟合与独立校验，并在通过后**自动将生成的 `K-approved.pt` 路径写入 `.env` 中的 `K_STATISTICS`**，最后打印汇总信息：
+**本步骤用时：尚无正式 Hessian 同口径实测，暂无可靠小时数；按日志进度校准。**
+
+先在拟合池检查数据稳定性和两种布局的块间二阶谱矩变异系数。全部门槛通过后，程序在 `fit.pt` 中冻结规模及身份，再自动执行独立留出；任何拟合失败都先停止，不读取留出数据。留出通过后，自动把 `K-approved.pt` 路径写入尚未绑定其他 K 的 `.env`，最后打印汇总。
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
-source /data/260010171/lm-head-h100-m16-20261116.env
-bash scripts/run_lm_head_h100.sh prepare-k
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
+LH_TOKENS=32768 LH_BLOCKS=5 bash scripts/run_lm_head_h100.sh prepare-k
 ```
 
 **通过标准**：命令退出码为 0，终端末尾 `=== PREPARE-K SUMMARY ===` 显示 `fit: passed=True`、`check: passed=True`，且 `.env` 中已激活 `K_STATISTICS=.../K-approved.pt`。
 
-- **若报错退出**：不要强行继续 `K`，先看终端输出与对应目录 `report.json`；若提示 `stability_passed=False`（且其他检查正常），按 `65536` → `131072` 扩样重跑即可：
-  ```bash
-  LH_TOKENS=65536 bash scripts/run_lm_head_h100.sh prepare-k
-  ```
-- 如扩样至 `131072` 仍未通过，保留输出与日志停止排查。
+**失败后按报告处理，不能跳过门槛：**
+
+- 数值、结构、梯度兼容性或固定梯度检查失败：保留报告，停止排查，不把它们解释成样本不足。
+- 只有拟合数据稳定性失败时，按下方两档依次扩样；`fit_scale.action=expand_tokens` 是规模建议，还需核对其他门槛。
+- 数据稳定但 `fit_scale.action=expand_blocks`：按[参考页的完整命令](LM_HEAD_REFERENCE.md#拟合扩块)在相同 token 数上改用每布局 10 块。留出仍是每布局 5 块。
+- `review_undefined_moments`、10 块后仍 `unresolved_at_block_limit`，或 131072 tokens 仍不稳定：保留未测稳结果，停止 K，不继续增大规模。
+- **留出失败时停止。** 不根据留出结果再扩样、扩块或改代理，直到同一份留出通过。
+
+**扩到 65536 tokens 用时：待实测；这是一次新的拟合，拟合通过才会继续留出。**
+
+```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
+LH_TOKENS=65536 LH_BLOCKS=5 bash scripts/run_lm_head_h100.sh prepare-k
+```
+
+**65536 仍仅数据不稳定时，扩到 131072 tokens 用时：待实测；这是本轮 token 上限。**
+
+```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
+LH_TOKENS=131072 LH_BLOCKS=5 bash scripts/run_lm_head_h100.sh prepare-k
+```
+
+默认报告位于 `$LH_CURVATURE_ROOT/init-fit-<tokens>-b<块数>/report.json`；留出位于 `init-check-<tokens>-fit-b<拟合块数>/`。不同规模自动分目录。完整已结束的同设置测量可重跑同命令读取；离线曲率未实现训练式逐步续算，未完成测量会重新计算。
 
 ---
 
 ## 4. 联合短测（`smoke-all`，只用第 1 张卡，约 10–25 分钟）
 
-在第一张卡上连续完成 `G`、`T`、`K` 三个目标的 32 步短测、SwanLab 上传验收与耗时汇总：
+**本步骤用时：预留 10–25 分钟，另需人工查看 SwanLab 网页。**
+
+在第一张卡上连续完成 `G`、`T`、`K` 三个目标的 32 步短测与耗时汇总；云端是否收到指标须在命令结束后人工确认：
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
-source /data/260010171/lm-head-h100-m16-20261116.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
 bash scripts/run_lm_head_h100.sh smoke-all
 ```
 
@@ -107,14 +143,16 @@ bash scripts/run_lm_head_h100.sh smoke-all
 
 ---
 
-## 5. 自动顺序执行正式 `clean`（4 卡并行，约 15–45 小时）
+## 5. 自动顺序执行正式 `clean`（4 卡并行）
+
+**本步骤用时：旧实现排期参照合计 35–104 小时；新 T/K 加速版需根据本机 smoke 与正式吞吐更新。**
 
 确认第 4 步两项通过标准均满足后，提交一条命令即可自动顺序跑完 **`G → T → K` 全部正式 `clean`**，期间无需人工干预；全部结束后会自动生成并打印汇总结果表：
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
-source /data/260010171/lm-head-h100-m16-20261116.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
 bash scripts/run_lm_head_h100.sh clean-all
 ```
 
@@ -128,30 +166,30 @@ bash scripts/run_lm_head_h100.sh clean-all
 
 `grid` 运行时间长，需按 **`G` → 确认 → `T` → 确认 → `K`** 顺序分别提交；**前一个任务彻底结束并确认后再提交下一个**（会自动跳过同目录下已完成的 `clean`）：
 
-**1) 提交 G grid（约 8–25 天）：**
+**1) 提交 G grid；用时：旧实现参照约 8–25 天，优先按本机 clean 实测更新。**
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
-source /data/260010171/lm-head-h100-m16-20261116.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
 OBJECTIVE=G bash scripts/run_lm_head_h100.sh grid
 ```
 
-**2) G 结束确认后再提交 T grid（约 7–21 天）：**
+**2) G 结束确认后再提交 T grid；用时：旧实现参照约 25–77 天，加速版待校准。**
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
-source /data/260010171/lm-head-h100-m16-20261116.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
 OBJECTIVE=T bash scripts/run_lm_head_h100.sh grid
 ```
 
-**3) T 结束确认后再提交 K grid（约 5–17 天）：**
+**3) T 结束确认后再提交 K grid；用时：旧实现参照约 15–46 天，加速版待校准。**
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
-source /data/260010171/lm-head-h100-m16-20261116.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
 OBJECTIVE=K bash scripts/run_lm_head_h100.sh grid
 ```
 
@@ -165,37 +203,63 @@ OBJECTIVE=K bash scripts/run_lm_head_h100.sh grid
 
 **恢复 `clean-all`（接着跑完剩余 G → T → K clean，并在结束时出表）：**
 
+**用时：预留 5–15 分钟初始化，再加未完成的训练；强制中断可能重算最近未持久保存的至多约 191 步。**
+
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
-source /data/260010171/lm-head-h100-m16-20261116.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
 LH_PHASE=clean-all bash scripts/run_lm_head_h100.sh resume
 ```
 
-**恢复某个单目标 `grid`（把 `OBJECTIVE` 改为实际中断的目标 `G` / `T` / `K`）：**
+仅复制实际中断目标对应的一块。
+
+**恢复 G grid；用时：预留 5–15 分钟初始化，再加 G 剩余训练。**
 
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
-source /data/260010171/lm-head-h100-m16-20261116.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
 OBJECTIVE=G LH_PHASE=grid bash scripts/run_lm_head_h100.sh resume
+```
+
+**恢复 T grid；用时：预留 5–15 分钟初始化，再加 T 剩余训练。**
+
+```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
+OBJECTIVE=T LH_PHASE=grid bash scripts/run_lm_head_h100.sh resume
+```
+
+**恢复 K grid；用时：预留 5–15 分钟初始化，再加 K 剩余训练。**
+
+```bash
+set -euo pipefail
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
+OBJECTIVE=K LH_PHASE=grid bash scripts/run_lm_head_h100.sh resume
 ```
 
 **主动安全暂停当前训练：**
 
+**用时：请求通常 1 分钟内返回；真正释放 GPU 需等待完整 optimizer step、保存和全部 worker 退出。返回成功不代表已经释放。**
+
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
-source /data/260010171/lm-head-h100-m16-20261116.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
 bash scripts/run_lm_head_h100.sh pause
 ```
 
 **查看当前进度 / 随时刷新结果表：**
 
+**用时：小规模通常 1 分钟内；完整网格预留 1–5 分钟，取决于日志和存储速度。**
+
 ```bash
 set -euo pipefail
-cd /data/260010171/nanogpt-lm-head-h100-m16-20261116
-source /data/260010171/lm-head-h100-m16-20261116.env
+cd /data/260010171/nanogpt-lm-head-h100-m16-20261116-r1
+source /data/260010171/lm-head-h100-m16-20261116-r1.env
 bash scripts/run_lm_head_h100.sh status
 bash scripts/run_lm_head_h100.sh report
 ```

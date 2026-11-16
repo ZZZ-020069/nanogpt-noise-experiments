@@ -198,11 +198,26 @@ class H100Launch(unittest.TestCase):
         self.assertEqual(passed.returncode, 0, passed.stderr)
         self.assertEqual(passed.stdout.count('CALL'), 2)
         self.assertIn('ARG=<--mode>\nARG=<fit>', passed.stdout)
-        self.assertIn('ARG=</curv root/init-fit-65536>', passed.stdout)
+        self.assertIn('ARG=</curv root/init-fit-65536-b5>', passed.stdout)
         self.assertIn('ARG=<--mode>\nARG=<check>', passed.stdout)
-        self.assertIn('ARG=<--fit-dir>\nARG=</curv root/init-fit-65536>', passed.stdout)
-        self.assertIn('ARG=</curv root/init-check-65536>', passed.stdout)
+        self.assertIn('ARG=<--fit-dir>\nARG=</curv root/init-fit-65536-b5>', passed.stdout)
+        self.assertIn('ARG=</curv root/init-check-65536-fit-b5>', passed.stdout)
         self.assertNotIn('ARG=<--checkpoint>', passed.stdout)
+
+    def test_prepare_k_expanded_fit_keeps_five_heldout_blocks(self):
+        result = self.invoke('prepare-k', LH_BLOCKS='10', LH_TOKENS='65536',
+                             LH_CURVATURE_DIR='', LH_CURVATURE_ROOT='/curv root')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        fit, check = result.stdout.split('CALL\n')[1:]
+        self.assertIn('ARG=<--blocks>\nARG=<10>', fit)
+        self.assertIn('ARG=</curv root/init-fit-65536-b10>', fit)
+        self.assertIn('ARG=<--blocks>\nARG=<5>', check)
+        self.assertIn('ARG=<--fit-dir>\nARG=</curv root/init-fit-65536-b10>', check)
+        self.assertIn('ARG=</curv root/init-check-65536-fit-b10>', check)
+        for blocks in ('2', '6', 'bad'):
+            result = self.invoke('prepare-k', LH_BLOCKS=blocks)
+            self.assertEqual(result.returncode, 2)
+            self.assertNotIn('CALL', result.stdout)
 
     def test_readonly_and_curvature_need_no_swanlab_credentials(self):
         for action in ('plan','status','report','pause','curvature-fit','prepare-k'):
