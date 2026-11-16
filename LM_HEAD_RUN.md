@@ -109,7 +109,7 @@ LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261116/init-che
 bash scripts/run_lm_head_h100.sh curvature-check
 ```
 
-**继续条件：**留出目录的 `report.json` 为 `passed=true`，并生成 `K-approved.pt`。将该文件的绝对路径写入共同 `.env` 文件中的 `K_STATISTICS`（取消注释并核对路径），后续任务自动加载。如果拟合扩样过，留出命令的 token 数和路径也必须对应修改。
+**继续条件：**留出目录的 `report.json` 为 `passed=true`，并生成 `K-approved.pt`。从模板复制出的 `.env` 在 `source` 时会自动导出 `LH_ENV_FILE`，因此初始化 `curvature-check` 通过后**代码会自动将该绝对路径写入并取消注释共同 `.env` 中的 `K_STATISTICS`**（`LH_CHECKPOINT` 非空的后期漂移测量、未通过的留出、以及已激活其他 `K_STATISTICS` 的 `.env` 均不会被覆盖），后续任务 `source` 即自动加载；如手动维护 `.env` 可开文件核对一眼路径。如果拟合扩样过，留出命令的 token 数和路径也必须对应修改（自动写入会按实际目录同步路径）。
 
 留出失败就保留失败结果，暂停 K；不要根据已看过的留出结果反复调到通过（此时仍可用单目标命令 `OBJECTIVE=G` / `OBJECTIVE=T` 单独跑 `G` 和 `T`）。曲率阶段暂不上传 SwanLab，进度看平台日志，结果看 `report.json`。
 

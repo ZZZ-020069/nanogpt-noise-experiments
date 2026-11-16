@@ -2,6 +2,11 @@
 from dataclasses import asdict
 from pathlib import Path
 import math
+import os
+import re
+import shlex
+import sys
+import tempfile
 import time
 import numpy as np
 import torch
@@ -287,3 +292,75 @@ def measure(input_root, output, mode='fit', *, tokens=32768, count=None,
                 fit_sha256=file_hash(Path(fit_dir)/'fit.pt'), check_id=run_id))
         write_json(output/'report.json', report)
         return report
+
+
+_ACTIVE_K_RE = re.compile(r'^\s*(?:export\s+)?K_STATISTICS=(.*)$')
+_COMMENT_K_RE = re.compile(r'^\s*#\s*(?:export\s+)?K_STATISTICS=.*$')
+
+
+def _parse_env_value(raw):
+    raw = raw.strip()
+    if not raw or raw.startswith('#'):
+        return ''
+    try:
+        tokens = shlex.split(raw, comments=True, posix=True)
+        return tokens[0] if tokens else ''
+    except ValueError:
+        return raw.strip('"\'')
+
+
+def sync_k_statistics_env(env_file, statistics_path, *, checkpoint=None, report=None, force=False):
+    """Persist approved initial K-approved.pt into a sourced .env file without touching drift checks."""
+    if not env_file or checkpoint is not None:
+        return 'skipped'
+    if report is not None and (not report.get('passed') or report.get('purpose') != 'initial_proxy_acceptance'):
+        return 'skipped'
+    env_path, stats_path = Path(env_file), Path(statistics_path)
+    if not env_path.is_file() or not stats_path.is_file():
+        return 'skipped'
+    resolved = str(stats_path.resolve())
+    export_line = f'export K_STATISTICS={shlex.quote(resolved)}'
+    text = env_path.read_text(encoding='utf8')
+    lines = text.splitlines(keepends=True)
+
+    active_idx = None
+    existing_val = ''
+    comment_idx = None
+    for idx, line in enumerate(lines):
+        m = _ACTIVE_K_RE.match(line.rstrip('\r\n'))
+        if m:
+            active_idx = idx
+            existing_val = _parse_env_value(m.group(1))
+            break
+        if comment_idx is None and _COMMENT_K_RE.match(line.rstrip('\r\n')):
+            comment_idx = idx
+
+    if active_idx is not None and existing_val:
+        if os.path.normcase(str(Path(existing_val).resolve())) == os.path.normcase(resolved):
+            return 'unchanged'
+        if not force:
+            print(f'[env-sync] K_STATISTICS already active in {env_path}; keeping {existing_val} (set LH_FORCE_K_ENV=1 to overwrite).',
+                  file=sys.stderr)
+            return 'preserved'
+
+    target_idx = active_idx if active_idx is not None else comment_idx
+    if target_idx is not None:
+        eol = '\r\n' if lines[target_idx].endswith('\r\n') else ('\n' if lines[target_idx].endswith('\n') else '')
+        lines[target_idx] = export_line + (eol or '\n')
+    else:
+        if lines and not lines[-1].endswith(('\n', '\r')):
+            lines[-1] = lines[-1] + '\n'
+        lines.append(export_line + '\n')
+
+    mode = env_path.stat().st_mode
+    fd, tmp_name = tempfile.mkstemp(prefix='.env-sync-', dir=str(env_path.parent))
+    try:
+        with os.fdopen(fd, 'w', encoding='utf8', newline='') as handle:
+            handle.write(''.join(lines))
+        os.chmod(tmp_name, mode)
+        os.replace(tmp_name, env_path)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
+    print(f'[env-sync] Updated K_STATISTICS={resolved} in {env_path}', file=sys.stderr)
+    return 'updated'

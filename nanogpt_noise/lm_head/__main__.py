@@ -1,13 +1,13 @@
 """Explicit entry points; no command automatically chains training stages."""
 import argparse
 import json
+import os
 from pathlib import Path
 from ..artifacts import write_json, read_json
 from .protocol import CENTERS
 from .runner import (input_identity,bind_root,job_list,smoke,serve,worker,
                      smoke_identity,collect)
-from .measure import measure
-from .measure import load_statistics
+from .measure import measure, load_statistics, sync_k_statistics_env
 from ..model import Shape
 from .protocol import Budget, DEFAULT_MICRO, require_micro
 from .analyze import report as comparison_report
@@ -76,6 +76,14 @@ def main(argv=None):
         report=measure(args.input_root,args.output,args.mode,tokens=args.tokens,count=args.blocks,
                        fit_dir=args.fit_dir,checkpoint=args.checkpoint,
                        chunk_tokens=args.chunk_tokens,micro=args.micro_batch,test=args.test)
+        if args.mode=='check' and not args.test:
+            sync_k_statistics_env(
+                os.environ.get('LH_ENV_FILE'),
+                Path(args.output)/'K-approved.pt',
+                checkpoint=args.checkpoint,
+                report=report,
+                force=os.environ.get('LH_FORCE_K_ENV')=='1',
+            )
         print(json.dumps({k:v for k,v in report.items() if k!='blocks'},indent=2))
         return 0 if report['passed'] else 3
     if args.objective=='K' and not args.statistics:

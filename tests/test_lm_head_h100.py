@@ -135,6 +135,52 @@ class H100Launch(unittest.TestCase):
         self.assertEqual(self.invoke('smoke',NANOGPT_SWANLAB='0',SWANLAB_API_KEY='').returncode,0)
         self.assertNotEqual(self.invoke('smoke',NANOGPT_SWANLAB='bad').returncode,0)
 
+    def test_k_statistics_env_sync_and_drift_protection(self):
+        from nanogpt_noise.lm_head.measure import sync_k_statistics_env
+
+        with tempfile.TemporaryDirectory(prefix='h100 env sync ') as directory:
+            root = Path(directory)
+            env_file = root / 'test.env'
+            stats = root / 'init-check-64k' / 'K-approved.pt'
+            stats.parent.mkdir()
+            stats.write_bytes(b'approved')
+            other = root / 'init-check-32k' / 'K-approved.pt'
+            other.parent.mkdir()
+            other.write_bytes(b'other')
+            init_report = dict(passed=True, purpose='initial_proxy_acceptance')
+
+            env_file.write_text('# header\nexport MICRO_BATCH=16\n# export K_STATISTICS=/old/path.pt\n', encoding='utf8')
+            # Must ignore late drift checks and failed reports.
+            self.assertEqual(sync_k_statistics_env(env_file, stats, checkpoint='/head.pt', report=init_report), 'skipped')
+            self.assertEqual(sync_k_statistics_env(env_file, stats, report=dict(passed=False, purpose='initial_proxy_acceptance')), 'skipped')
+            self.assertEqual(sync_k_statistics_env(env_file, stats, report=dict(passed=True, purpose='trajectory_drift')), 'skipped')
+            self.assertIn('# export K_STATISTICS=/old/path.pt', env_file.read_text(encoding='utf8'))
+
+            # Initial passing check uncomments and populates K_STATISTICS automatically.
+            self.assertEqual(sync_k_statistics_env(env_file, stats, report=init_report), 'updated')
+            text = env_file.read_text(encoding='utf8')
+            self.assertIn(f'export K_STATISTICS={stats.resolve()}', text.replace("'", ''))
+            self.assertNotIn('# export K_STATISTICS=', text)
+            self.assertEqual(sync_k_statistics_env(env_file, stats, report=init_report), 'unchanged')
+
+            # Existing active K_STATISTICS is preserved unless force=True.
+            self.assertEqual(sync_k_statistics_env(env_file, other, report=init_report), 'preserved')
+            self.assertIn(stats.name, env_file.read_text(encoding='utf8'))
+            self.assertNotIn(other.parent.name, env_file.read_text(encoding='utf8'))
+            self.assertEqual(sync_k_statistics_env(env_file, other, report=init_report, force=True), 'updated')
+            self.assertIn(other.parent.name, env_file.read_text(encoding='utf8'))
+
+            # Sourcing scripts/lm_head_h100.env.example exports LH_ENV_FILE automatically.
+            copied_env = root / 'copied.env'
+            copied_env.write_text(Path('scripts/lm_head_h100.env.example').read_text(encoding='utf8'), encoding='utf8')
+            sourced = subprocess.run(
+                [BASH, '-c', f'source "{copied_env.as_posix()}" && printf "%s" "$LH_ENV_FILE"'],
+                cwd=Path(__file__).resolve().parents[1],
+                capture_output=True, text=True, encoding='utf8',
+            )
+            self.assertEqual(sourced.returncode, 0, sourced.stderr)
+            self.assertTrue(sourced.stdout.endswith('copied.env'), sourced.stdout)
+
     def test_readonly_and_curvature_need_no_swanlab_credentials(self):
         for action in ('plan','status','report','pause','curvature-fit'):
             result=self.invoke(action,NANOGPT_SWANLAB='1',SWANLAB_API_KEY='')

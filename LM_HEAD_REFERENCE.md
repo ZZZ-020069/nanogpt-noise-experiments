@@ -74,7 +74,7 @@ LH_CURVATURE_DIR=/data/260010171/results/lm-head-curvature-m16-20261115-v3/init-
 bash scripts/run_lm_head_h100.sh curvature-check
 ```
 
-若拟合实际采用 10 块，将 `LH_FIT_DIR` 改为对应拟合目录；留出仍为每布局 5 块。留出通过后，把实际生成的 `K-approved.pt` 路径写入共同 `.env` 的 `K_STATISTICS`。测量设置变化使用新目录，保留旧报告；不能修改 metadata 或通过标志复用旧产物。
+若拟合实际采用 10 块，将 `LH_FIT_DIR` 改为对应拟合目录；留出仍为每布局 5 块。留出通过后，当共同 `.env` 通过 `source` 导出了 `LH_ENV_FILE` 且尚未锁定其他 `K_STATISTICS` 时，初始化 `curvature-check` 会自动将实际生成的 `K-approved.pt` 路径写入共同 `.env` 的 `K_STATISTICS`（否则手动写入并取消注释；后期携带 `LH_CHECKPOINT` 的漂移检查不会触碰 `.env`）。测量设置变化使用新目录，保留旧报告；不能修改 metadata 或通过标志复用旧产物。
 
 ## 训练后曲率漂移
 
