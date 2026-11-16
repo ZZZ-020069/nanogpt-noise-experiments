@@ -329,20 +329,44 @@ def _run(config,data,artifacts,output,micro,rt,mode,smoke_steps,pause_after,paus
             positions = indices['train'][step].reshape(rt.world,-1)[rt.rank]
             train_loss = torch.zeros((),device=rt.device,dtype=torch.float64)
             diagnostic = step==0 or (step+1)%10==0 or step+1==target
+            fast_objective = (config['objective'] in ('K', 'T') and rt.world == 1
+                              and getattr(model, 'use_fast_chunk', True))
+            grad_accum = torch.zeros_like(model.lm_head.weight, dtype=torch.float32) if fast_objective else None
             for i,chunk in enumerate(positions.split(micro)):
                 sync = wrapped.no_sync() if rt.world>1 and i<accumulation-1 else contextlib.nullcontext()
                 with sync:
                     x,y = batch(arrays['train'],chunk,budget.sequence,rt.device)
                     before=stamp()
-                    with rt.autocast():
-                        loss = wrapped(x,y)
-                    if profiling:timings['forward_seconds']+=stamp()-before
-                    processed += micro*rt.world*budget.sequence
-                    rt.check([('training_loss',loss)])
-                    train_loss += loss.detach().double()/accumulation
+                    if fast_objective:
+                        with rt.autocast():
+                            h = model.features(x)
+                            loss, dz_buf = model.forward_fast_chunk(h,y,accumulation)
+                        if profiling:timings['forward_seconds']+=stamp()-before
+                        processed += micro*rt.world*budget.sequence
+                        rt.check([('training_loss',loss)])
+                        train_loss += loss.detach().double()/accumulation
+                        before=stamp()
+                        with rt.autocast():
+                            model.backward_fast_chunk(h,dz_buf,grad_accum)
+                        if profiling:timings['backward_seconds']+=stamp()-before
+                    else:
+                        with rt.autocast():
+                            loss = wrapped(x,y)
+                        if profiling:timings['forward_seconds']+=stamp()-before
+                        processed += micro*rt.world*budget.sequence
+                        rt.check([('training_loss',loss)])
+                        train_loss += loss.detach().double()/accumulation
+                        before=stamp()
+                        (loss/accumulation).backward()
+                        if profiling:timings['backward_seconds']+=stamp()-before
+            if fast_objective:
+                if config['objective']=='K':
                     before=stamp()
-                    (loss/accumulation).backward()
+                    train_loss, model.lm_head.weight.grad = model.finalize_K_step(grad_accum,train_loss)
                     if profiling:timings['backward_seconds']+=stamp()-before
+                else:
+                    model.lm_head.weight.grad = grad_accum
+                rt.check([('training_loss',train_loss)])
             if rt.world>1:
                 dist.all_reduce(train_loss)
                 train_loss /= rt.world
