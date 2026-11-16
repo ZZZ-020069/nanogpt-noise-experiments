@@ -68,8 +68,8 @@
   "history": "history/README.md",
   "files": {
     "LM_HEAD_RUN.md": {
-      "sha256": "ae5c0dc184a846ce2427b270e69d0827f629913aff78a6fbd82dc28a2715284c",
-      "bytes": 14744
+      "sha256": "089f0f2b57eb9067b95b4629d9c1c4f472d0a501da8368fc20fed78e0ec26d91",
+      "bytes": 16090
     },
     "README.md": {
       "sha256": "8d2c71305e657a007fe00189046ce7f50ed2a41f0b9cdb895edcf1a42d5dae38",
@@ -172,8 +172,8 @@
       "bytes": 5527
     },
     "LM_HEAD_REFERENCE.md": {
-      "sha256": "9d1e746711b05800ba8a15f41d28fdeb7e45dff373c105c24fa9507c326ddc20",
-      "bytes": 10553
+      "sha256": "1acf21e47394f6c3a0062122ca50ba44854e54154857d1f872400149ece808b0",
+      "bytes": 11141
     },
     "docs/experiments/lm-head-only/runtime-estimates.json": {
       "sha256": "c5c0de0b72ed56cbdc77ca04ac57442d0ab57be431d9b715683dd38964cffc76",
@@ -198,6 +198,7 @@
     "bash_blocks": 25,
     "explicit_resume_variants": 6,
     "runtime_estimates": "docs/experiments/lm-head-only/runtime-estimates.json",
-    "h100_runtime_measured": false
+    "h100_runtime_measured": false,
+    "timing_note_before_every_command": true
   }
 }

@@ -43,6 +43,8 @@
 
 例如从 32768 扩为 65536，每布局仍用 5 块：
 
+**本步骤用时（65536 tokens 拟合）：暂无可靠小时数；需独立计时，不能把 32768 tokens 的整轮耗时直接乘二。**
+
 ```bash
 set -euo pipefail
 cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
@@ -58,6 +60,8 @@ bash scripts/run_lm_head_h100.sh curvature-fit
 查看 `report.json` 的 `moments_by_layout`，各布局 `second_moment.std / abs(second_moment.mean)` 即该变异系数；均值为零时不能直接用比值判定。`numeric_passed`、`geometry_passed`、`compatibility.passed` 和 `fixed_gradient_checks_passed` 对应数值、结构与梯度兼容性检查；这些失败不能直接解释为样本不足。
 
 例如最终采用 65536 tokens、5 块的拟合并已通过，留出命令为：
+
+**本步骤用时（65536 tokens 留出）：暂无可靠小时数；需独立计时，不能把 32768 tokens 的整轮耗时直接乘二。**
 
 ```bash
 set -euo pipefail
@@ -78,6 +82,8 @@ bash scripts/run_lm_head_h100.sh curvature-check
 
 先从对应 `search.json` 找到赢家 candidate，在平台任务环境设置 `LH_CHECKPOINT` 为该赢家的 `analysis/head-000191.pt`（其他时点相应替换，终点也可用赢家 `final.pt`）。在任务中执行：
 
+**本步骤用时（后期漂移拟合）：暂无可靠小时数；先参考同机器初始化拟合的实测用时，再用首个时点校准。**
+
 ```bash
 set -euo pipefail
 cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
@@ -89,6 +95,8 @@ bash scripts/run_lm_head_h100.sh curvature-fit
 ```
 
 这里的 32768 应替换为初始化最终规模；每个优化器、时点和阶段都使用不同目录。拟合完成后，保持同一 `LH_CHECKPOINT`，执行：
+
+**本步骤用时（后期漂移留出）：暂无可靠小时数；先参考同机器初始化留出的实测用时，再用首个时点校准。**
 
 ```bash
 set -euo pipefail

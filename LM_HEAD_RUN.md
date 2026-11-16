@@ -24,9 +24,9 @@ G 是真实 GPT 损失；T 是初始化处的二次展开；K 是用 Hessian 统
 
 ## 1. 准备代码、路径和 SwanLab（只做一次）
 
-**操作预留：5–15 分钟。**假设正式输入已准备好，不含重新制备或传输数据。
-
 在 H100 平台任务环境中配置保密变量 `SWANLAB_API_KEY`，后续每次任务都要继承它。然后下载固定代码：
+
+**本步骤用时：下载与配置预留 5–15 分钟，不含输入制备或传输。**
 
 ```bash
 set -euo pipefail
@@ -54,9 +54,9 @@ cp -n scripts/lm_head_h100.env.example /data/260010171/lm-head-h100-m16-v3.env
 
 ## 2. 检查环境和输入
 
-**预留：5–15 分钟。**仅 plan 通常是秒级，安装与输入哈希核验占主要时间。
-
 整块复制执行。安装 SDK 只需一次，使用独立实验环境，勿升级旧任务正在使用的共享环境。
+
+**本步骤用时：安装与检查预留 5–15 分钟；仅 plan 通常为秒级。**
 
 ```bash
 set -euo pipefail
@@ -71,9 +71,9 @@ bash scripts/run_lm_head_h100.sh plan
 
 ## 3. 跑 G：先短测，再正式训练
 
-**用时：smoke 预留 3–8 分钟；四卡 formal 暂估 6–18 小时。**
-
 先做 smoke（四优化器各 32 步，依次使用第一张 GPU）：
+
+**本步骤用时（G smoke）：预留 3–8 分钟，四优化器在第一张卡上顺序短测。**
 
 ```bash
 set -euo pipefail
@@ -83,6 +83,8 @@ OBJECTIVE=G bash scripts/run_lm_head_h100.sh smoke
 ```
 
 **继续条件：**命令正常结束，`$LH_RUN_ROOT/smoke/G/passed.json` 的 `passed` 为 `true`；SwanLab 项目中四优化器均有数据，`progress/step` 到 32。两项都满足后，另开任务运行：
+
+**本步骤用时（G clean）：四卡暂估 6–18 小时，待 H100 实测校准。**
 
 ```bash
 set -euo pipefail
@@ -97,7 +99,7 @@ formal 执行零噪声 clean：四优化器各搜索 8 个学习率，共 32 条
 
 ## 4. 跑 T：重复相同验收流程
 
-**用时：smoke 预留 6–18 分钟；四卡 formal 暂估 18–54 小时。**
+**本步骤用时（T smoke）：预留 6–18 分钟，四优化器在第一张卡上顺序短测。**
 
 ```bash
 set -euo pipefail
@@ -107,6 +109,8 @@ OBJECTIVE=T bash scripts/run_lm_head_h100.sh smoke
 ```
 
 确认 `smoke/T/passed.json` 和 SwanLab 四优化器数据后，另开任务：
+
+**本步骤用时（T clean）：四卡暂估 18–54 小时，待 H100 实测校准。**
 
 ```bash
 set -euo pipefail
@@ -119,9 +123,11 @@ OBJECTIVE=T bash scripts/run_lm_head_h100.sh formal
 
 ## 5. 准备 K：先拟合，再独立验收
 
-**用时：拟合与留出均待首轮计时，当前没有可信的数值估计。**两者包含 FP64 子块、谱分解和梯度探针；拟合测 16 个完整训练 batch，留出测 train/val 各 200 条序列，不能假定两阶段一样久。日志如何估剩余时间见[参考页](LM_HEAD_REFERENCE.md#用时估算与更新)。
+拟合与留出包含 FP64 子块、谱分解和梯度探针；拟合测 16 个完整训练 batch，留出测 train/val 各 200 条序列，不能假定两阶段一样久。日志如何估剩余时间见[参考页](LM_HEAD_REFERENCE.md#用时估算与更新)。
 
 等待训练退出。先在初始化处测量并拟合，使用第一张 GPU：
+
+**本步骤用时（K 拟合）：暂无可靠小时数，需首轮计时；不能沿用 K smoke 的用时。**
 
 ```bash
 set -euo pipefail
@@ -136,6 +142,8 @@ bash scripts/run_lm_head_h100.sh curvature-fit
 打开该目录的 `report.json`。**只有 `passed=true` 才继续。**若失败，先看文末处理表；扩样规则与命令见[拟合扩样](LM_HEAD_REFERENCE.md#拟合扩样)。
 
 拟合通过后，用相同 token 数做独立留出验收：
+
+**本步骤用时（K 独立留出）：暂无可靠小时数，需单独计时；不能假定与拟合等时。**
 
 ```bash
 set -euo pipefail
@@ -154,7 +162,7 @@ bash scripts/run_lm_head_h100.sh curvature-check
 
 ## 6. 跑 K：先短测，再正式训练
 
-**用时：smoke 预留 4–12 分钟；四卡 formal 暂估 11–32 小时。**不包含第 5 步的曲率测量。
+**本步骤用时（K smoke）：预留 4–12 分钟，四优化器在第一张卡上顺序短测。**
 
 ```bash
 set -euo pipefail
@@ -164,6 +172,8 @@ OBJECTIVE=K bash scripts/run_lm_head_h100.sh smoke
 ```
 
 确认 `smoke/K/passed.json` 和 SwanLab 四优化器数据后，另开任务：
+
+**本步骤用时（K clean）：四卡暂估 11–32 小时，待 H100 实测校准。**
 
 ```bash
 set -euo pipefail
@@ -176,7 +186,7 @@ OBJECTIVE=K bash scripts/run_lm_head_h100.sh formal
 
 ## 7. 查看结果，再决定是否跑噪声网格
 
-**汇总预留：clean 1–3 分钟，完整 grid 5–20 分钟。**这是文件扫描的操作预留；存储慢时可能更久。
+**本步骤用时：clean 结果汇总预留 1–3 分钟；完整 grid 汇总预留 5–20 分钟，慢盘另计。**
 
 ```bash
 set -euo pipefail
@@ -190,7 +200,9 @@ bash scripts/run_lm_head_h100.sh report
 
 先审查 clean。决定开展完整噪声网格后，按需要选择下面的目标；每块单独提交，前一个任务退出后再提交下一个。
 
-**G 噪声网格：clean 已完成后，剩余暂估 8–25 天。**
+**G 噪声网格：**
+
+**本步骤用时（G grid）：clean 已完成时，四卡剩余暂估 8–25 天，待 H100 实测校准。**
 
 ```bash
 set -euo pipefail
@@ -199,7 +211,9 @@ source /data/260010171/lm-head-h100-m16-v3.env
 OBJECTIVE=G bash scripts/run_lm_head_h100.sh grid
 ```
 
-**T 噪声网格：clean 已完成后，剩余暂估 25–77 天。**
+**T 噪声网格：**
+
+**本步骤用时（T grid）：clean 已完成时，四卡剩余暂估 25–77 天，待 H100 实测校准。**
 
 ```bash
 set -euo pipefail
@@ -208,7 +222,9 @@ source /data/260010171/lm-head-h100-m16-v3.env
 OBJECTIVE=T bash scripts/run_lm_head_h100.sh grid
 ```
 
-**K 噪声网格：clean 已完成后，剩余暂估 15–46 天（正式 K 文件已配置，K smoke 已通过）。**
+**K 噪声网格（正式 K 文件已配置，K smoke 已通过）：**
+
+**本步骤用时（K grid）：clean 已完成时，四卡剩余暂估 15–46 天，待 H100 实测校准。**
 
 ```bash
 set -euo pipefail
@@ -233,13 +249,15 @@ grid 每目标 35 节点 × 4 优化器 × 8 候选，复用同身份已完成�
 
 ## 断点续训：只复制对应的一块
 
-**恢复初始化预留 1–5 分钟；训练耗时按未完成候选和剩余步数计算，不会重新跑完整预算。**若只剩一个候选，最多只会占一张卡，不能把它的剩余时间再除以四。
+若只剩一个候选，最多只会占一张卡，不能把它的剩余时间再除以四。
 
 确认原控制器和所有 worker 已退出，并继续使用原代码、输入、结果目录和 micro。已完成候选自动跳过，被中断候选从最近检查点恢复；强制中断可能重算检查点后的步骤。K 恢复仍需原来匹配的 `K_STATISTICS`。
 
 ### 恢复 clean 正式训练（原来执行 formal）
 
 **恢复 G clean：**
+
+**本步骤用时（恢复 G clean）：初始化预留 1–5 分钟，之后仅执行剩余候选和步数；剩余时长按当前进度估算。**
 
 ```bash
 set -euo pipefail
@@ -250,6 +268,8 @@ OBJECTIVE=G LH_PHASE=clean bash scripts/run_lm_head_h100.sh resume
 
 **恢复 T clean：**
 
+**本步骤用时（恢复 T clean）：初始化预留 1–5 分钟，之后仅执行剩余候选和步数；剩余时长按当前进度估算。**
+
 ```bash
 set -euo pipefail
 cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
@@ -258,6 +278,8 @@ OBJECTIVE=T LH_PHASE=clean bash scripts/run_lm_head_h100.sh resume
 ```
 
 **恢复 K clean：**
+
+**本步骤用时（恢复 K clean）：初始化预留 1–5 分钟，之后仅执行剩余候选和步数；剩余时长按当前进度估算。**
 
 ```bash
 set -euo pipefail
@@ -270,6 +292,8 @@ OBJECTIVE=K LH_PHASE=clean bash scripts/run_lm_head_h100.sh resume
 
 **恢复 G grid：**
 
+**本步骤用时（恢复 G grid）：初始化预留 1–5 分钟，之后仅执行剩余候选和步数；剩余时长按当前进度估算。**
+
 ```bash
 set -euo pipefail
 cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
@@ -278,6 +302,8 @@ OBJECTIVE=G LH_PHASE=grid bash scripts/run_lm_head_h100.sh resume
 ```
 
 **恢复 T grid：**
+
+**本步骤用时（恢复 T grid）：初始化预留 1–5 分钟，之后仅执行剩余候选和步数；剩余时长按当前进度估算。**
 
 ```bash
 set -euo pipefail
@@ -288,6 +314,8 @@ OBJECTIVE=T LH_PHASE=grid bash scripts/run_lm_head_h100.sh resume
 
 **恢复 K grid：**
 
+**本步骤用时（恢复 K grid）：初始化预留 1–5 分钟，之后仅执行剩余候选和步数；剩余时长按当前进度估算。**
+
 ```bash
 set -euo pipefail
 cd /data/260010171/nanogpt-lm-head-h100-m16-20261115-v3
@@ -297,9 +325,9 @@ OBJECTIVE=K LH_PHASE=grid bash scripts/run_lm_head_h100.sh resume
 
 ### 主动暂停与 smoke 中断
 
-**暂停请求通常数秒返回；训练实际退出还需等待当前更新与检查点写入，可能是几十秒到数分钟。**确认退出后再恢复。
-
 有可用交互终端时，复制下面整块请求当前结果根的训练保存并暂停：
+
+**本步骤用时：暂停请求通常数秒返回；实际退出还需几十秒至数分钟等待更新与保存。**
 
 ```bash
 set -euo pipefail
