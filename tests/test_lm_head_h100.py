@@ -17,6 +17,7 @@ class H100Launch(unittest.TestCase):
                             'printf "CUDA=<%s>\\n" "$CUDA_VISIBLE_DEVICES"\n'
                             'printf "SWAN=<%s> PROJECT=<%s> CACHE=<%s>\\n" "$NANOGPT_SWANLAB" "$SWANLAB_PROJ_NAME" "$RUN_BASE"\n'
                             'if [[ "${FAIL_PREFLIGHT:-0}" == 1 && "$*" == *"lm_head.telemetry"* ]]; then exit 19; fi\n'
+                            'if [[ "${FAIL_FIT:-0}" == 1 && "$*" == *"--mode fit"* ]]; then exit 3; fi\n'
                             'if [[ "${FAIL_T:-0}" == 1 && "$*" == *"--objective T"* ]]; then exit 17; fi\n',
                             encoding='utf8')
             stub.chmod(0o755)
@@ -88,17 +89,19 @@ class H100Launch(unittest.TestCase):
             self.assertNotIn('ARG=<K>', failed.stdout)
             passed = self.invoke('formal-all', LH_RUN_ROOT=run_root, K_STATISTICS='/approved.pt')
             self.assertEqual(passed.returncode, 0, passed.stderr)
-            self.assertEqual(passed.stdout.count('CALL'), 3)
+            self.assertEqual(passed.stdout.count('CALL'), 4)
             self.assertEqual(passed.stdout.count('ARG=<--phase>\nARG=<clean>'), 3)
             self.assertIn('ARG=<--objective>\nARG=<G>', passed.stdout)
             self.assertIn('ARG=<--objective>\nARG=<T>', passed.stdout)
             self.assertIn('ARG=<--objective>\nARG=<K>', passed.stdout)
+            self.assertIn('ARG=<report>', passed.stdout)
             self.assertNotIn('ARG=<--phase>\nARG=<grid>', passed.stdout)
             resumed = self.invoke('resume', LH_RUN_ROOT=run_root, LH_PHASE='clean-all', K_STATISTICS='/approved.pt')
             self.assertEqual(resumed.returncode, 0, resumed.stderr)
-            self.assertEqual(resumed.stdout.count('CALL'), 3)
+            self.assertEqual(resumed.stdout.count('CALL'), 4)
             self.assertEqual(resumed.stdout.count('ARG=<--resume>'), 3)
             self.assertEqual(resumed.stdout.count('ARG=<--phase>\nARG=<clean>'), 3)
+            self.assertIn('ARG=<report>', resumed.stdout)
         self.assertNotEqual(self.invoke('resume', LH_PHASE='clean-all').returncode, 0)
 
     def test_resume_and_readonly_routes(self):
@@ -181,8 +184,28 @@ class H100Launch(unittest.TestCase):
             self.assertEqual(sourced.returncode, 0, sourced.stderr)
             self.assertTrue(sourced.stdout.endswith('copied.env'), sourced.stdout)
 
+    def test_prepare_k_chains_fit_and_check_and_stops_on_failure(self):
+        failed = self.invoke('prepare-k', LH_CURVATURE_DIR='', LH_CURVATURE_ROOT='/curv root',
+                             LH_CHECKPOINT='/stale.pt', OBJECTIVE='K', FAIL_FIT='1')
+        self.assertEqual(failed.returncode, 3)
+        self.assertEqual(failed.stdout.count('CALL'), 1)
+        self.assertIn('ARG=<--mode>\nARG=<fit>', failed.stdout)
+        self.assertNotIn('ARG=<--mode>\nARG=<check>', failed.stdout)
+        self.assertNotIn('ARG=<--checkpoint>', failed.stdout)
+
+        passed = self.invoke('prepare-k', LH_CURVATURE_DIR='', LH_CURVATURE_ROOT='/curv root',
+                             LH_CHECKPOINT='/stale.pt', OBJECTIVE='K', LH_TOKENS='65536')
+        self.assertEqual(passed.returncode, 0, passed.stderr)
+        self.assertEqual(passed.stdout.count('CALL'), 2)
+        self.assertIn('ARG=<--mode>\nARG=<fit>', passed.stdout)
+        self.assertIn('ARG=</curv root/init-fit-65536>', passed.stdout)
+        self.assertIn('ARG=<--mode>\nARG=<check>', passed.stdout)
+        self.assertIn('ARG=<--fit-dir>\nARG=</curv root/init-fit-65536>', passed.stdout)
+        self.assertIn('ARG=</curv root/init-check-65536>', passed.stdout)
+        self.assertNotIn('ARG=<--checkpoint>', passed.stdout)
+
     def test_readonly_and_curvature_need_no_swanlab_credentials(self):
-        for action in ('plan','status','report','pause','curvature-fit'):
+        for action in ('plan','status','report','pause','curvature-fit','prepare-k'):
             result=self.invoke(action,NANOGPT_SWANLAB='1',SWANLAB_API_KEY='')
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertNotIn('ARG=<nanogpt_noise.lm_head.telemetry>',result.stdout)
